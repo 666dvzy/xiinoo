@@ -2,39 +2,35 @@
 """
 Backend Combinado de IA de Ruleta v3.8
 =======================================
-Fusiona 'main_neighbors.py' y 'main_apuestas_externas.py' en un único
-servidor con modos intercambiables y estadísticas separadas.
-
-MEJORAS v3.8 (Optimización de Acertividad):
-- (MEJORA 2a) DIVERSITY_WEIGHT cambiado de 0.4 a 4.0 (ahora tiene peso real)
-- (MEJORA 2b) Eliminado el '0' como "seguro" en apuestas outside (matemáticamente incorrecto)
-- (MEJORA 2c) LONG_TERM_BALANCE_WEIGHT puesto en 0.0 (estrategia simplificada a Momentum)
-
-MEJORAS v3.7 (Bugfix Crítico de Sintaxis):
-- (global) CORREGIDO: Se elimina la línea 'app.post("/delete_last_number",-1)(delete_last_number_v2)'
-  que causaba un 'TypeError' al iniciar.
-- (delete_last_number) MEJORA: Se implementa la lógica de recálculo correcta
-  para 'number_last_seen' directamente dentro de la función, eliminando
-  duplicados.
-
-MEJORAS v3.6 (Bugfix Crítico de Datos):
-- (process_number) CORREGIDO: Registra números repetidos (ej. 20, 20).
-
-MEJORAS v3.5 (Corrección Lógica '0'):
-- (process_number) CORREGIDO: Lógica de victoria universal
-  'is_win = number in active_bet["covered_numbers"]'
+(Archivo modificado por Gemini para el despliegue en Railway)
 """
+
+# --- IMPORTS (CON ADICIONES PARA RAILWAY) ---
 import uvicorn
 import asyncio
 import math
 import random
 import os
+import logging # <-- Añadido para logs de depuración
+from pathlib import Path # <-- Añadido para rutas absolutas
 from typing import List, Dict, Any, Optional, Tuple
 from collections import deque, Counter, defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+
+# ==============================================================================
+# CONFIGURACIÓN DE LOGGING Y RUTAS
+# ==============================================================================
+
+# Configura un logger para que podamos ver los mensajes en los logs de Railway
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- ¡NUEVO! Define el directorio base de tu proyecto ---
+# Esto crea una ruta absoluta al directorio donde se encuentra este script
+BASE_DIR = Path(__file__).resolve().parent
 
 # ==============================================================================
 # CONFIGURACIÓN GLOBAL Y CONSTANTES
@@ -51,21 +47,41 @@ app.add_middleware(
 
 # --- INICIO: ENDPOINT PARA SERVIR HTML (Corrección 404) ---
 
+# --- ¡MODIFICADO! Esta es la ruta que da el HTML ---
 @app.get("/", response_class=HTMLResponse)
 async def get_root():
-    """Sirve el archivo HTML principal."""
-    html_file_path = "roulette_ai_combined.html"
+    """
+    Sirve el archivo index.html principal.
+    Ahora usa una ruta absoluta y tiene logging detallado.
+    """
+    # --- ¡CORREGIDO! Apunta a 'index.html', el archivo que subiste
+    html_file_path = BASE_DIR / "index.html"
     
-    if os.path.exists(html_file_path):
+    logger.info(f"Petición a /: Intentando servir archivo desde: {html_file_path}")
+    
+    try:
+        # Abre el archivo con codificación utf-8 (buena práctica)
         with open(html_file_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read(), status_code=200)
+            content = f.read()
+        
+        logger.info("Petición a /: ¡ÉXITO! index.html leído y servido.")
+        return HTMLResponse(content=content, status_code=200)
+
+    except FileNotFoundError:
+        logger.error(f"¡¡¡ERROR CRÍTICO!!! No se encontró index.html en la ruta: {html_file_path}")
+        # Esto te mostrará el error en el navegador
+        return HTMLResponse(
+            content=f"Error 500: FileNotFoundError. No se pudo encontrar 'index.html' en la ruta esperada: {html_file_path}",
+            status_code=500
+        )
     
-    return HTMLResponse(
-        content=f"<h1>Error 404: Archivo HTML no encontrado.</h1>"
-                f"<p>Asegúrate de que el archivo <strong>'{html_file_path}'</strong> "
-                "esté en la misma carpeta que tu script de Python.</p>",
-        status_code=404
-    )
+    except Exception as e:
+        logger.error(f"¡¡¡ERROR CRÍTICO!!! Error inesperado al leer index.html: {e}")
+        # Esto te mostrará cualquier otro error
+        return HTMLResponse(
+            content=f"Error 500: Error inesperado del servidor. {e}",
+            status_code=500
+        )
 
 # --- FIN: ENDPOINT PARA SERVIR HTML ---
 
@@ -553,9 +569,10 @@ def analyze_streaks(history_data: List[int], bet_type: str) -> Dict[str, float]:
     
     if streaks + chops == 0:
         return {}
-    
+
     streak_ratio = streaks / (streaks + chops)
     last_prop = last_n[-1].get(bet_type)
+    
     if not last_prop:
         return {}
 
@@ -563,57 +580,59 @@ def analyze_streaks(history_data: List[int], bet_type: str) -> Dict[str, float]:
     bonuses = {}
 
     if streak_ratio > IA_CONFIG_OUTSIDE["STREAK_THRESHOLD"]:
+        # Racha: apostar a que sigue
         if bet_type == "color":
             bonuses = {"RED": bonus_score if last_prop == "RED" else 0.0, "BLACK": bonus_score if last_prop == "BLACK" else 0.0}
         elif bet_type == "parity":
             bonuses = {"EVEN": bonus_score if last_prop == "EVEN" else 0.0, "ODD": bonus_score if last_prop == "ODD" else 0.0}
         elif bet_type == "range":
             bonuses = {"LOW": bonus_score if last_prop == "LOW" else 0.0, "HIGH": bonus_score if last_prop == "HIGH" else 0.0}
-            
+
     elif streak_ratio < IA_CONFIG_OUTSIDE["CHOP_THRESHOLD"]:
+        # Corte: apostar a que cambia
         if bet_type == "color":
             bonuses = {"RED": bonus_score if last_prop == "BLACK" else 0.0, "BLACK": bonus_score if last_prop == "RED" else 0.0}
         elif bet_type == "parity":
             bonuses = {"EVEN": bonus_score if last_prop == "ODD" else 0.0, "ODD": bonus_score if last_prop == "EVEN" else 0.0}
         elif bet_type == "range":
             bonuses = {"LOW": bonus_score if last_prop == "HIGH" else 0.0, "HIGH": bonus_score if last_prop == "LOW" else 0.0}
-
+            
     return bonuses
 
 
-def calculate_bet_scores(history_data: List[int]) -> Dict[str, float]:
-    """Calcula puntuaciones para apuestas externas, combinando tendencias y análisis de rachas."""
-    if len(history_data) < 5:
-        return {bet: 50.0 for bet in ["RED", "BLACK", "EVEN", "ODD", "LOW", "HIGH"]}
+def find_best_outside_bet() -> Dict[str, Any]:
+    """Lógica de predicción para el modo OUTSIDE"""
+    global zero_protection_active
+    history_data = history[-100:]
+    if len(history_data) < IA_CONFIG_OUTSIDE["MIN_HISTORY_FOR_ANALYSIS"]:
+        return {"bet": "LEARNING", "covered_numbers": [], "gale_level": 0, "reasoning": "Datos insuficientes"}
 
-    trends = analyze_trends(history_data)
-    window_weights = IA_CONFIG_OUTSIDE.get("WINDOW_WEIGHTS", {})
-    scores = {bet: 0.0 for bet in ["RED", "BLACK", "EVEN", "ODD", "LOW", "HIGH"]}
-
-    # 1. Análisis de Ventanas (MEJORA v3.8: Solo Momentum activo)
-    for window_name, window_size in IA_CONFIG_OUTSIDE.get("LOOKBACKS", {}).items():
-        if window_name not in trends: continue
-        win_trends = trends[window_name]
-        weight = window_weights.get(window_name, 1.0)
-        
-        # ✅ MEJORA 2c: Solo 'momentum' tiene peso (long_term_balance está en 0.0)
-        contrarian = False  # Ya no usamos estrategia contrarian
-        
-        zero_rate = win_trends.get("ZERO_RATE", 0.0)
-        sample_length = int(window_size)
-        if len(history_data) < window_size:
-            sample_length = len(history_data)
-        total_non_zero = int(sample_length * (1 - zero_rate)) if sample_length > 0 else 0
-        if total_non_zero <= 0: continue
+    # 1. Ponderación de Ventanas (Momentum vs Balance)
+    scores = {"RED": 0.0, "BLACK": 0.0, "EVEN": 0.0, "ODD": 0.0, "LOW": 0.0, "HIGH": 0.0}
+    trends_by_window = analyze_trends(history_data)
+    
+    for window_name, window_trends in trends_by_window.items():
+        weight = IA_CONFIG_OUTSIDE["WINDOW_WEIGHTS"].get(window_name, 0.0)
+        if weight == 0.0:
+            continue
             
+        contrarian = (window_name == "long_term_balance") # Apostar contra la tendencia larga
+        
         for bet_type in scores.keys():
-            if bet_type not in win_trends: continue
-            freq = win_trends[bet_type]
+            if bet_type not in window_trends: continue
+            
+            freq = window_trends[bet_type]
             diff = freq - 0.5
-            z = diff * (total_non_zero ** 0.5)
-            if contrarian:
-                z = -z
-            scores[bet_type] += z * weight
+            
+            # Ponderar por la "fuerza" de la señal (Z-score simplificado)
+            total_non_zero = int(len(history_data) * (1.0 - window_trends.get("ZERO_RATE", 0.0)))
+            if total_non_zero > 0:
+                z = diff * (total_non_zero ** 0.5)
+                
+                if contrarian:
+                    z = -z
+                
+                scores[bet_type] += z * weight
 
     # 2. Análisis de Rachas
     streak_bonuses = {}
@@ -626,16 +645,33 @@ def calculate_bet_scores(history_data: List[int]) -> Dict[str, float]:
             scores[bet_type] += bonus
             
     # 3. Protección contra Cero
+    # (MEJORA 2b: Eliminado el '0' como "seguro")
     global zero_protection_active
     if history_data and history_data[-1] == 0:
         zero_protection_active = True
         zero_weight = IA_CONFIG_OUTSIDE.get("ZERO_PROTECTION_WEIGHT", 0.0)
         for bet_type in scores.keys():
-            scores[bet_type] += zero_weight
+             scores[bet_type] += zero_weight
     else:
         zero_protection_active = False
+        
+    # Decisión Final
+    if not scores:
+        return {"bet": "IDLE", "covered_numbers": [], "gale_level": 0, "reasoning": "No se generaron scores."}
 
-    return scores
+    best_bet = max(scores, key=scores.get)
+    best_score = scores[best_bet]
+
+    if best_score < 0.1: # Umbral de confianza
+        return {"bet": "IDLE", "covered_numbers": [], "gale_level": 0, "reasoning": f"Score bajo ({best_score:.1f})"}
+
+    return {
+        "bet": best_bet,
+        "covered_numbers": OUTSIDE_BETS[best_bet],
+        "gale_level": 0,
+        "reasoning": f"Mejor apuesta: {best_bet} (Score: {best_score:.1f})"
+    }
+
 
 # ==============================================================================
 # LÓGICA DE PREDICCIÓN (MODOS)
@@ -644,13 +680,12 @@ def calculate_bet_scores(history_data: List[int]) -> Dict[str, float]:
 def find_best_number_bet() -> Dict[str, Any]:
     """Lógica de predicción para el modo NEIGHBORS"""
     global same_pair_streak, is_stable
-    
     phase = get_current_phase()
     confidence_mult = get_confidence_multiplier()
     neighbours = IA_CONFIG_NEIGHBORS["NEIGHBOURS"]
     
     weight_adjustments = adapt_weights()
-    
+
     def get_weight(key: str) -> float:
         base = IA_CONFIG_NEIGHBORS[key]
         adjustment = weight_adjustments.get(key, 1.0)
@@ -663,66 +698,92 @@ def find_best_number_bet() -> Dict[str, Any]:
             "base_numbers": [15, 32],
             "covered_numbers": sorted(set(get_neighbour_set(15, neighbours)) | set(get_neighbour_set(32, neighbours))),
             "coverage_count": 18,
-            "reasoning": f"Fase: {phase} - Recolectando datos ({len(history)}/{IA_CONFIG_NEIGHBORS['LEARNING_PHASE_MIN']})",
-            "phase": phase,
-            "confidence": 0.0,
-            "mode": "neighbors"
+            "reasoning": "Fase de aprendizaje inicial, usando par por defecto.",
+            "gale_level": 0
         }
+
+    lookback_len = min(len(history), IA_CONFIG_NEIGHBORS["LOOKBACK"])
+    history_window = history[-lookback_len:]
     
-    lookback = min(IA_CONFIG_NEIGHBORS["LOOKBACK"], len(history))
-    tr = history[-lookback:]
-    
-    dfreq = {n: 0.0 for n in ROULETTE_ORDER}
-    gamma = IA_CONFIG_NEIGHBORS["DECAY_GAMMA"]
-    for k, num in enumerate(reversed(tr)):
-        if num in dfreq: dfreq[num] += (gamma ** k)
-    max_freq = max(dfreq.values()) if dfreq.values() else 1
-    if max_freq > 0:
-        for n in dfreq: dfreq[n] /= max_freq
-    
-    recency = {n: 1.0 / (1 + number_last_seen.get(n, lookback) ** 0.5) for n in ROULETTE_ORDER}
-    
-    hot_zones = analyze_hot_zones(tr)
-    
-    breakouts = detect_breakouts(tr)
-    distance_patterns = analyze_distance_patterns(tr)
-    clusters = detect_clusters(tr)
-    sector_momentum = analyze_sector_momentum(tr)
-    
+    distance_patterns = analyze_distance_patterns(history_window)
     is_stable = distance_patterns["is_stable"]
     
-    analysis_data = {'frequency': dfreq, 'recency': recency, 'hot_zones': hot_zones, 'breakouts': breakouts}
+    if IA_CONFIG_NEIGHBORS["USE_STABILITY_FILTER"] and not is_stable:
+        return {
+            "base_numbers": [],
+            "covered_numbers": [],
+            "coverage_count": 0,
+            "reasoning": f"PAUSA: Volatilidad alta detectada ({distance_patterns['volatility']:.1f} > {IA_CONFIG_NEIGHBORS['VOLATILITY_THRESHOLD']})",
+            "gale_level": 0
+        }
+
+    counts = Counter(history_window)
+    total_spins = len(history_window)
     
+    # --- Advanced Analytics ---
+    hot_zones = analyze_hot_zones(history_window)
+    breakouts = detect_breakouts(history_window)
+    clusters = detect_clusters(history_window)
+    global sector_momentum
+    sector_momentum = analyze_sector_momentum(history_window)
+    
+    analysis_data = {
+        'frequency': {n: counts.get(n, 0) / total_spins for n in ROULETTE_ORDER},
+        'recency': {n: (lookback_len - number_last_seen[n]) / lookback_len if number_last_seen[n] < lookback_len else 0.0 for n in ROULETTE_ORDER},
+        'hot_zones': hot_zones,
+        'breakouts': breakouts
+    }
+    
+    dfreq, recency, hot_zones, breakouts = {}, {}, {}, {}
+    for n in ROULETTE_ORDER:
+        dfreq[n] = analysis_data['frequency'].get(n, 0)
+        recency[n] = analysis_data['recency'].get(n, 0)
+        hot_zones[n] = analysis_data['hot_zones'].get(n, 1.0)
+        breakouts[n] = analysis_data['breakouts'].get(n, 0.0)
+
+    # Pre-calcular sets de vecinos
     neigh_sets = {n: set(get_neighbour_set(n, neighbours)) for n in ROULETTE_ORDER}
     
+    # --- Dynamic Top Numbers (MEJORA v2.5) ---
+    def composite_score(n):
+        f = dfreq[n] * 12.0
+        r = recency[n] * 9.0
+        h = (hot_zones[n] - 1.0) * 10.0 if hot_zones[n] > 1.0 else (hot_zones[n] - 1.0) * 5.0
+        b = breakouts[n] * 6.0
+        return f + r + h + b
+
     if IA_CONFIG_NEIGHBORS["DYNAMIC_TOP_NUMBERS"]:
-        data_ratio = min(len(history) / IA_CONFIG_NEIGHBORS["OPTIMAL_DATA_THRESHOLD"], 1.5)
-        top_n = int(IA_CONFIG_NEIGHBORS["MIN_TOP_NUMBERS"] + (IA_CONFIG_NEIGHBORS["MAX_TOP_NUMBERS"] - IA_CONFIG_NEIGHBORS["MIN_TOP_NUMBERS"]) * data_ratio)
+        all_scores = [(n, composite_score(n)) for n in ROULETTE_ORDER]
+        all_scores.sort(key=lambda x: x[1], reverse=True)
+        dynamic_top_count = max(
+            IA_CONFIG_NEIGHBORS["MIN_TOP_NUMBERS"],
+            min(IA_CONFIG_NEIGHBORS["MAX_TOP_NUMBERS"], int(len(history) / 10))
+        )
+        top_numbers = [n for n, score in all_scores[:dynamic_top_count]]
     else:
-        top_n = 18
-    
-    def composite_score(num):
-        return (dfreq[num] * 3.0 + recency[num] * 2.5 + hot_zones[num] * 3.5 + breakouts[num] * 1.5)
-    
-    top_numbers = sorted(ROULETTE_ORDER, key=composite_score, reverse=True)[:top_n]
-    
-    best_pair = None
-    best_score = float('-inf')
-    pair_scores: Dict[tuple, float] = {}
-    
+        top_numbers = ROULETTE_ORDER
+
+    # --- Pair Scoring ---
+    pair_scores = {}
     for i in top_numbers:
         for j in top_numbers:
             if i >= j: continue
+            
             set_i = neigh_sets[i]
             set_j = neigh_sets[j]
             
-            if len(set_i & set_j) > 0: continue
+            overlap = len(set_i & set_j)
             
+            # Penalización fuerte por solapamiento
+            if overlap > 0:
+                continue
+
             cov = set_i | set_j
-            C = 18
+            C = 18 # len(cov) - siempre 18 si no hay solapamiento y N=4
             
             coverage_quality = analyze_coverage_quality(list(cov), analysis_data)
             
+            # --- Scoring Components ---
             coverage_score = get_weight("COVERAGE_WEIGHT") * C
             coverage_quality_score = get_weight("COVERAGE_QUALITY_WEIGHT") * coverage_quality['coverage_score'] * 20
             frequency_score = get_weight("FREQUENCY_WEIGHT") * (dfreq[i] + dfreq[j])
@@ -730,63 +791,62 @@ def find_best_number_bet() -> Dict[str, Any]:
             hot_zone_score = get_weight("HOT_ZONE_WEIGHT") * (hot_zones[i] + hot_zones[j])
             performance_score = get_pair_performance_score((i, j)) * 4.0 * confidence_mult
             diversity_score = get_weight("DIVERSITY_WEIGHT") * get_sector_diversity_advanced([i, j]) * 8
+            
             cluster_bonus = 0
             for cluster in clusters:
                 if i in cluster and j in cluster: cluster_bonus = get_weight("CLUSTER_WEIGHT") * 10; break
                 elif i in cluster or j in cluster: cluster_bonus = get_weight("CLUSTER_WEIGHT") * 5
+                
             breakout_bonus = (breakouts[i] + breakouts[j]) * 8
+
             pattern_score = 0
-            if distance_patterns["trend"] > 1.5 and get_wheel_distance(i, j) > distance_patterns["avg_distance"]: pattern_score = get_weight("PATTERN_WEIGHT") * 5
-            elif distance_patterns["trend"] < -1.5 and get_wheel_distance(i, j) < distance_patterns["avg_distance"]: pattern_score = get_weight("PATTERN_WEIGHT") * 5
+            if distance_patterns["trend"] > 1.5 and get_wheel_distance(i, j) > distance_patterns["avg_distance"]:
+                pattern_score = get_weight("PATTERN_WEIGHT") * 5
+            elif distance_patterns["trend"] < -1.5 and get_wheel_distance(i, j) < distance_patterns["avg_distance"]:
+                pattern_score = get_weight("PATTERN_WEIGHT") * 5
+
             sector_bonus = 0
             if sector_momentum:
                 idx1 = ROULETTE_ORDER.index(i); idx2 = ROULETTE_ORDER.index(j)
                 sector1 = f"sector_{(idx1 // 9) + 1}"; sector2 = f"sector_{(idx2 // 9) + 1}"
                 sector_bonus = (sector_momentum.get(sector1, 0) + sector_momentum.get(sector2, 0)) * 5
+            
             p3 = 1.0 - ((1.0 - (C/37.0)) ** 3)
-            accuracy_score = get_weight("ACCURACY_WEIGHT") * p3 * 30
-            sc = (coverage_score + coverage_quality_score + frequency_score + 
-                  recency_score + hot_zone_score + diversity_score + 
-                  pattern_score + accuracy_score + performance_score +
-                  cluster_bonus + breakout_bonus + sector_bonus)
+            accuracy_score = get_weight("ACCURACY_WEIGHT") * (p3 * 10)
             
-            current_pair_sorted = tuple(sorted((i, j)))
-            if current_pair_sorted in recent_pairs: sc -= get_weight("REPEAT_PENALTY") * 25
-            if last_pair_used == current_pair_sorted: sc -= 60.0
-            if last_pair_used is not None:
-                li, lj = last_pair_used
-                prev_covered = neigh_sets[li] | neigh_sets[lj]
-                inter = len(cov & prev_covered); uni = len(cov | prev_covered) or 1
-                overlap_ratio = inter / uni
-                sc -= overlap_ratio * get_weight("OVERLAP_PENALTY_MULTIPLIER") * 120.0
-            base_cold_penalty = 0
-            if hot_zones[i] < IA_CONFIG_NEIGHBORS["HOT_ZONE_THRESHOLD"] * 0.6: base_cold_penalty += get_weight("COLD_ZONE_PENALTY") * 3
-            if hot_zones[j] < IA_CONFIG_NEIGHBORS["HOT_ZONE_THRESHOLD"] * 0.6: base_cold_penalty += get_weight("COLD_ZONE_PENALTY") * 3
-            sc -= base_cold_penalty
-            if len(history) > 200:
-                if breakouts[i] < 0.5 and dfreq[i] < 0.3: sc -= 15.0
-                if breakouts[j] < 0.5 and dfreq[j] < 0.3: sc -= 15.0
+            total_score = (
+                coverage_score + coverage_quality_score + frequency_score + 
+                recency_score + hot_zone_score + diversity_score + 
+                performance_score + cluster_bonus + breakout_bonus + 
+                pattern_score + sector_bonus + accuracy_score
+            )
             
-            pair_scores[(i, j)] = sc
-            if sc > best_score:
-                best_score = sc
-                best_pair = (i, j)
+            pair_scores[(i, j)] = total_score
     
-    chosen = best_pair
-    
+    if not pair_scores:
+        chosen = None
+    else:
+        sorted_pairs = sorted(pair_scores.items(), key=lambda item: item[1], reverse=True)
+        chosen = sorted_pairs[0][0]
+        
+    # --- Fallback / Final Decision ---
     if chosen is None:
-        print(f"⚠️ ALERTA: No se encontró par sin solapamiento en top_numbers (Top {top_n}). Buscando en TODOS los 37 números...")
-        fallback_best_pair = None; fallback_best_score = float('-inf')
+        print("⚠️ FALLBACK: No se encontraron pares sin solapamiento en el Top-N. Buscando en todos los 37 números...")
+        fallback_best_pair = None
+        fallback_best_score = float('-inf')
         all_numbers = ROULETTE_ORDER
         for i in all_numbers:
             for j in all_numbers:
                 if i >= j: continue
                 if len(neigh_sets[i] & neigh_sets[j]) > 0: continue
+                
                 sc = composite_score(i) + composite_score(j)
                 sc += get_pair_performance_score(tuple(sorted((i,j))))
+                
                 if sc > fallback_best_score:
                     fallback_best_score = sc
                     fallback_best_pair = (i, j)
+                    
         if fallback_best_pair:
             base_nums = [fallback_best_pair[0], fallback_best_pair[1]]
             print(f"✅ Fallback exitoso: {base_nums} (encontrado en búsqueda completa)")
@@ -795,22 +855,28 @@ def find_best_number_bet() -> Dict[str, Any]:
             base_nums = [0, 11]
     else:
         base_nums = [chosen[0], chosen[1]]
-    
+
+    # --- Lógica anti-repetición ---
     current_pair_sorted = tuple(sorted(base_nums))
     if last_pair_used is not None and current_pair_sorted == last_pair_used:
         same_pair_streak += 1
     else:
         same_pair_streak = 0
+    
+    # ... (Lógica de cambio estratégico)
     if same_pair_streak >= IA_CONFIG_NEIGHBORS["MAX_CONSEC_SAME_PAIR"]:
         alternatives = []
         for (p, sc) in pair_scores.items():
             if set(p) == set(base_nums): continue
             if len(neigh_sets[p[0]] & neigh_sets[p[1]]) > 0: continue
+            
             current_cov = neigh_sets[base_nums[0]] | neigh_sets[base_nums[1]]
             alt_cov = neigh_sets[p[0]] | neigh_sets[p[1]]
             overlap = len(current_cov & alt_cov)
+            
             if overlap < 6:
                 alternatives.append((p, sc, overlap))
+        
         if alternatives:
             alternatives.sort(key=lambda x: (x[1], -x[2]), reverse=True)
             base_nums = [alternatives[0][0][0], alternatives[0][0][1]]
@@ -819,66 +885,18 @@ def find_best_number_bet() -> Dict[str, Any]:
 
     covered = neigh_sets[base_nums[0]] | neigh_sets[base_nums[1]]
     C = len(covered)
-    
     p3 = 1.0 - ((1.0 - (C/37.0)) ** 3)
-    prediction_confidence = min(p3 * confidence_mult * 100, 99.9)
-    final_quality = analyze_coverage_quality(list(covered), analysis_data)
-    
-    volatility_info = f"Volat={distance_patterns['volatility']:.2f}"
-    
-    reasoning = (
-        f"Fase:{phase} | Data:{len(history)} | C={C} | P3={p3*100:.1f}% | "
-        f"Conf={prediction_confidence:.1f}% | {volatility_info} | "
-        f"Qual={final_quality['coverage_score']:.2f} | "
-        f"Strong={final_quality['strong_numbers_count']}/{C}"
-    )
-    
+    prediction_confidence = min(p3 * confidence_mult * get_pair_performance_score(tuple(sorted(base_nums))), 0.95)
+
+    best_score = pair_scores.get(tuple(sorted(base_nums)), 0)
+
     return {
-        "mode": "neighbors",
         "base_numbers": base_nums,
-        "covered_numbers": sorted(covered),
+        "covered_numbers": sorted(list(covered)),
         "coverage_count": C,
-        "reasoning": reasoning,
-        "phase": phase,
-        "confidence": prediction_confidence,
-        "quality_metrics": final_quality,
-        "distance_patterns": distance_patterns
-    }
-
-def find_best_outside_bet() -> Dict[str, Any]:
-    """Lógica de predicción para el modo OUTSIDE"""
-    if len(history) < IA_CONFIG_OUTSIDE["MIN_HISTORY_FOR_ANALYSIS"]:
-        # ✅ MEJORA 2b: Ya NO se añade el '0' como seguro
-        covered_nums_set_fallback = set(OUTSIDE_BETS["RED"])
-        
-        return {
-            "mode": "outside",
-            "bet_type": "RED",
-            "covered_numbers": sorted(list(covered_nums_set_fallback)),
-            "coverage_count": 18,  # Ya no es 19
-            "reasoning": f"Recolectando datos ({len(history)}/{IA_CONFIG_OUTSIDE['MIN_HISTORY_FOR_ANALYSIS']})",
-            "score": 0.0
-        }
-    
-    scores = calculate_bet_scores(history)
-    
-    best_bet = max(scores, key=scores.get)
-    best_score = scores[best_bet]
-    
-    print(f"[DEBUG-OUTSIDE] Scores: {scores}")
-    print(f"[DEBUG-OUTSIDE] Mejor Apuesta: {best_bet} (Score: {best_score:.1f})")
-
-    # ✅ MEJORA 2b: Ya NO se añade el '0' como seguro
-    covered_nums_set = set(OUTSIDE_BETS[best_bet])
-    
-    return {
-        "mode": "outside",
-        "bet_type": best_bet,
-        "covered_numbers": sorted(list(covered_nums_set)),
-        "coverage_count": 18,  # Ya no es 19
-        "score": best_score,
-        "all_scores": scores,
-        "reasoning": f"Análisis de tendencias v3.8 - Score: {best_score:.1f}"
+        "gale_level": 0,
+        "confidence": round(prediction_confidence, 2),
+        "reasoning": f"Par {base_nums[0]},{base_nums[1]} | Fase: {phase} v3.8 - Score: {best_score:.1f}"
     }
 
 # ==============================================================================
@@ -888,7 +906,6 @@ def find_best_outside_bet() -> Dict[str, Any]:
 def get_all_stats() -> Dict[str, Any]:
     """Obtiene un diccionario con las estadísticas de AMBOS modos + estado global."""
     all_stats = {}
-    
     for mode in ["neighbors", "outside"]:
         s = stats[mode]
         cycles = s["total_wins"] + s["total_losses"]
@@ -897,7 +914,7 @@ def get_all_stats() -> Dict[str, Any]:
         recent_acc = 0.0
         if len(s["recent_results"]) > 0:
             recent_acc = sum(1 for r in s["recent_results"] if r) / len(s["recent_results"]) * 100
-        
+
         all_stats[mode] = {
             "wins": s["total_wins"],
             "losses": s["total_losses"],
@@ -910,9 +927,8 @@ def get_all_stats() -> Dict[str, Any]:
             "recent_accuracy": round(recent_acc, 1),
             "current_win_streak": s["current_win_streak"],
         }
-    
+        
     current_phase = get_current_phase()
-    
     all_stats["global"] = {
         "phase": current_phase,
         "data_count": len(history),
@@ -925,7 +941,6 @@ def get_all_stats() -> Dict[str, Any]:
     }
     return all_stats
 
-
 # ==============================================================================
 # ENDPOINTS DE FASTAPI
 # ==============================================================================
@@ -935,67 +950,54 @@ async def process_number(data: NumberInput):
     global game_state, active_bet, history, latest_data_for_frontend, cooldown_rounds, recent_pairs, last_pair_used, same_pair_streak, pair_performance, is_stable, zero_protection_active
     
     number = data.number
+    
     if not (0 <= number <= 36):
         raise HTTPException(status_code=400, detail="Número inválido.")
-    
+
     history.append(number)
     
     if current_mode == "neighbors":
-         update_number_tracking(number)
+        update_number_tracking(number)
     
     current_phase = get_current_phase()
     response: Dict[str, Any] = {"action": "WAIT"}
-    bet_active = (game_state not in ["IDLE", "LEARNING"])
     
-    min_learn_phase = IA_CONFIG_NEIGHBORS["LEARNING_PHASE_MIN"]
-    if current_phase == "LEARNING" and len(history) < min_learn_phase:
-        if not bet_active:
-            response = {
-                "action": "LEARNING",
-                "message": f"Recolectando datos: {len(history)}/{min_learn_phase}",
-                "progress": (len(history) / min_learn_phase) * 100,
-                "phase": current_phase,
-            }
+    bet_active = (game_state not in ["IDLE", "LEARNING", "COOLDOWN"])
     
-    if len(history) >= min_learn_phase and game_state == "LEARNING":
-        game_state = "IDLE"
-        cooldown_rounds = 0
-        print(f"✅ SISTEMA ACTIVADO - {len(history)} datos recopilados - Comenzando apuestas")
-    
-    elif bet_active:
-        
-        is_win = number in active_bet["covered_numbers"]
-
-        bet_mode = active_bet.get("mode", "neighbors") 
+    if bet_active and active_bet:
+        bet_mode = active_bet["mode"] # 'neighbors' o 'outside'
         mode_stats = stats[bet_mode]
         
-        mode_stats["recent_results"].append(is_win)
+        is_win = number in active_bet["covered_numbers"]
         
-        if bet_mode == "neighbors" and "base_numbers" in active_bet:
-            bi, bj = active_bet["base_numbers"]
-            pair_key = tuple(sorted((bi, bj)))
-            if pair_key not in pair_performance:
-                pair_performance[pair_key] = {'wins': 0, 'losses': 0, 'uses': 0, 'recent_wins': 0, 'recent_uses': 0}
-            pair_performance[pair_key]['uses'] += 1
-            pair_performance[pair_key]['recent_uses'] += 1
-            if is_win:
-                pair_performance[pair_key]['wins'] += 1
-                pair_performance[pair_key]['recent_wins'] += 1
-            if pair_performance[pair_key]['recent_uses'] >= 20:
-                pair_performance[pair_key]['recent_wins'] = 0
-                pair_performance[pair_key]['recent_uses'] = 0
+        # ✅ MEJORA v3.5: Lógica de victoria universal
         
         if is_win:
             mode_stats["total_wins"] += 1
             mode_stats["current_win_streak"] += 1
+            mode_stats["recent_results"].append(True)
             
+            win_level = "INITIAL"
             if game_state == "AWAITING_INITIAL_RESULT":
-                mode_stats["wins_initial"] += 1; win_level = "INICIAL"
+                mode_stats["wins_initial"] += 1
+                win_level = "INITIAL"
             elif game_state == "AWAITING_G1_RESULT":
-                mode_stats["wins_g1"] += 1; win_level = "G1"
-            else:
-                mode_stats["wins_g2"] += 1; win_level = "G2"
-            
+                mode_stats["wins_g1"] += 1
+                win_level = "G1"
+            elif game_state == "AWAITING_G2_RESULT":
+                mode_stats["wins_g2"] += 1
+                win_level = "G2"
+
+            if bet_mode == "neighbors" and "base_numbers" in active_bet:
+                bi, bj = active_bet["base_numbers"]
+                pair_key = tuple(sorted((bi, bj)))
+                if pair_key not in pair_performance:
+                    pair_performance[pair_key] = {'wins': 0, 'losses': 0, 'uses': 0, 'recent_wins': 0, 'recent_uses': 0}
+                pair_performance[pair_key]['wins'] += 1
+                pair_performance[pair_key]['uses'] += 1
+                pair_performance[pair_key]['recent_wins'] = min(pair_performance[pair_key].get('recent_wins', 0) + 1, 5)
+                pair_performance[pair_key]['recent_uses'] = min(pair_performance[pair_key].get('recent_uses', 0) + 1, 5)
+
             response = {
                 "action": "WIN",
                 "correct_number": number,
@@ -1008,13 +1010,15 @@ async def process_number(data: NumberInput):
                 recent_pairs.append(tuple(sorted((bi, bj))))
                 last_pair_used = tuple(sorted((bi, bj)))
                 same_pair_streak = 0
-            
+
             game_state = "IDLE"
             active_bet = None
-            cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"]
+            cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"] if bet_mode == "neighbors" else IA_CONFIG_OUTSIDE["COOLDOWN_ROUNDS"]
             print(f"✅ [{bet_mode.upper()}] VICTORIA! Nro: {number} | Nivel: {win_level} | Racha: {mode_stats['current_win_streak']}")
-        
-        else:
+
+        else: # No es victoria
+            mode_stats["recent_results"].append(False)
+            
             if game_state == "AWAITING_INITIAL_RESULT":
                 game_state = "AWAITING_G1_RESULT"
                 response = {"action": "G1", "bet_details": active_bet}
@@ -1023,98 +1027,85 @@ async def process_number(data: NumberInput):
                 game_state = "AWAITING_G2_RESULT"
                 response = {"action": "G2", "bet_details": active_bet}
             
-            else:
+            else: # Pérdida final (G2)
                 mode_stats["total_losses"] += 1
                 mode_stats["current_win_streak"] = 0
-                
+
                 if bet_mode == "neighbors" and "base_numbers" in active_bet:
                     bi, bj = active_bet["base_numbers"]
                     pair_key = tuple(sorted((bi, bj)))
-                    if pair_key in pair_performance:
-                        pair_performance[pair_key]['losses'] = pair_performance[pair_key].get('losses', 0) + 1
-                        pair_performance[pair_key]['recent_uses'] = max(pair_performance[pair_key].get('recent_uses', 1), 5)
-                        pair_performance[pair_key]['recent_wins'] = 0
+                    if pair_key not in pair_performance:
+                        pair_performance[pair_key] = {'wins': 0, 'losses': 0, 'uses': 0, 'recent_wins': 0, 'recent_uses': 0}
+                    pair_performance[pair_key]['losses'] += 1
+                    pair_performance[pair_key]['uses'] += 1
+                    pair_performance[pair_key]['recent_uses'] = min(pair_performance[pair_key].get('recent_uses', 0) + 1, 5)
+                    pair_performance[pair_key]['recent_wins'] = 0
+                    
                     recent_pairs.append(pair_key)
                     last_pair_used = pair_key
                 
                 response = {"action": "LOSS", "correct_number": number, "bet_details": active_bet}
-                
                 game_state = "IDLE"
                 active_bet = None
-                cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"]
+                cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"] if bet_mode == "neighbors" else IA_CONFIG_OUTSIDE["COOLDOWN_ROUNDS"]
                 print(f"❌ [{bet_mode.upper()}] PÉRDIDA. Nro: {number} | Racha reiniciada.")
-    
+
     elif cooldown_rounds > 0:
         cooldown_rounds -= 1
         response = (
-            {"action": "READY", "message": "Cooldown terminado"}
-            if cooldown_rounds == 0
+            {"action": "READY", "message": "Cooldown terminado"} if cooldown_rounds == 0
             else {"action": "COOLDOWN", "rounds_left": cooldown_rounds}
         )
     
-    should_generate_signal = (
-        game_state == "IDLE" and 
-        cooldown_rounds == 0 and 
-        len(history) >= min_learn_phase and
-        response.get("action") not in ["WIN", "LOSS", "G1", "G2"]
-    )
-    
-    if should_generate_signal:
+    elif game_state in ["IDLE", "LEARNING"] and current_phase != "LEARNING":
+        should_generate_signal = (
+            (IA_CONFIG_NEIGHBORS["FORCE_ENTRY"] if current_mode == "neighbors" else IA_CONFIG_OUTSIDE["FORCE_ENTRY"]) 
+            or (current_phase == "OPTIMAL")
+        )
         
-        if current_mode == "neighbors":
-            if IA_CONFIG_NEIGHBORS["FORCE_ENTRY"]:
-                reco = find_best_number_bet()
-                current_volatility = reco.get("distance_patterns", {}).get("volatility", 0.0)
-                
-                if IA_CONFIG_NEIGHBORS["USE_STABILITY_FILTER"] and not is_stable:
-                    game_state = "IDLE"
-                    active_bet = None
-                    response = {
-                        "action": "WAIT_STABILITY",
-                        "message": f"PAUSA: Volatilidad alta ({current_volatility:.2f} > {IA_CONFIG_NEIGHBORS['VOLATILITY_THRESHOLD']})",
-                        "reasoning": reco["reasoning"],
-                        "volatility": current_volatility
-                    }
-                else:
-                    game_state = "AWAITING_INITIAL_RESULT"
-                    active_bet = reco
-                    stats["neighbors"]["total_signals"] += 1
-                    response = {
-                        "action": "INITIAL",
-                        "bet_details": reco,
-                        "reasoning": reco["reasoning"],
-                    }
-                    stability_msg = "ESTABLE" if is_stable else f"INESTABLE ({current_volatility:.2f})"
-                    print(f"🎯 [NEIGHBORS] NUEVA APUESTA - Par: {reco['base_numbers']} | Cobertura: {reco['coverage_count']} | Conf: {reco['confidence']:.1f}% | Est: {stability_msg}")
+        if should_generate_signal:
+            
+            prediction = {}
+            if current_mode == "neighbors":
+                prediction = find_best_number_bet()
+            else: # current_mode == "outside"
+                prediction = find_best_outside_bet()
 
-        elif current_mode == "outside":
-            if IA_CONFIG_OUTSIDE["FORCE_ENTRY"]:
-                if len(history) < IA_CONFIG_OUTSIDE["MIN_HISTORY_FOR_ANALYSIS"]:
-                    response = {
-                        "action": "WAIT_DATA_OUTSIDE",
-                        "message": f"Datos insuficientes para modo Outside ({len(history)}/{IA_CONFIG_OUTSIDE['MIN_HISTORY_FOR_ANALYSIS']})"
-                    }
-                else:
-                    reco = find_best_outside_bet()
-                    game_state = "AWAITING_INITIAL_RESULT"
-                    active_bet = reco
-                    stats["outside"]["total_signals"] += 1
-                    response = {
-                        "action": "INITIAL",
-                        "bet_details": reco,
-                        "reasoning": reco["reasoning"],
-                    }
-                    print(f"🎯 [OUTSIDE] NUEVA APUESTA - Tipo: {reco['bet_type']} | Cobertura: {reco['coverage_count']} | Score: {reco['score']:.1f}")
+            if prediction and prediction["bet"] not in ["IDLE", "LEARNING"] and prediction["covered_numbers"]:
+                active_bet = prediction
+                active_bet["mode"] = current_mode # Sellar el modo de la apuesta
+                game_state = "AWAITING_INITIAL_RESULT"
+                stats[current_mode]["total_signals"] += 1
+                
+                response = {
+                    "action": "NEW_BET",
+                    "bet_details": active_bet
+                }
+                print(f"🔔 [{current_mode.upper()}] NUEVA SEÑAL: {prediction['bet'] if current_mode == 'outside' else prediction['base_numbers']}")
+            else:
+                reason = prediction.get("reasoning", "Sin señal válida")
+                response = {"action": "WAIT", "message": reason}
     
-    response["stats"] = get_all_stats()
-    response["history"] = history[-20:]
-    response["last_number"] = number
+    else: # Fase de aprendizaje
+        response = {"action": "LEARNING", "message": f"{len(history)}/{IA_CONFIG_NEIGHBORS['LEARNING_PHASE_MIN']}"}
+
+    # Empaquetar datos para el frontend
+    final_data = {
+        "action": response.get("action", "UPDATE"),
+        "response": response,
+        "last_number": number,
+        "history": history[-20:],
+        "stats": get_all_stats()
+    }
     
-    latest_data_for_frontend = response
+    # Notificar al long-polling
+    global latest_data_for_frontend, new_update_event
+    latest_data_for_frontend = final_data
     new_update_event.set()
     new_update_event.clear()
     
-    return response
+    return final_data
+
 
 @app.post("/set_mode")
 async def set_mode(data: ModeInput):
@@ -1122,7 +1113,7 @@ async def set_mode(data: ModeInput):
     
     if data.mode not in ["neighbors", "outside"]:
         raise HTTPException(status_code=400, detail="Modo inválido. Usar 'neighbors' o 'outside'.")
-    
+
     if data.mode == current_mode:
         return {"status": "success", "message": f"El modo ya es {current_mode}", "stats": get_all_stats()}
 
@@ -1131,7 +1122,7 @@ async def set_mode(data: ModeInput):
     cooldown_rounds = 0
     current_mode = data.mode
     
-    print(f"🔄 MODO CAMBIADO A: {current_mode.upper()}")
+    print(f"🔄 MODO CAMBIADO A: {current_mode.UPPER()}")
     
     response = {
         "action": "MODE_CHANGE",
@@ -1141,6 +1132,7 @@ async def set_mode(data: ModeInput):
         "last_number": history[-1] if history else None
     }
     
+    # Notificar al long-polling
     global latest_data_for_frontend, new_update_event
     latest_data_for_frontend = response
     new_update_event.set()
@@ -1179,74 +1171,77 @@ def get_initial_state():
             "stats": get_all_stats()
         }
 
+
 @app.post("/delete_last_number")
 def delete_last_number():
     global game_state, active_bet, history, cooldown_rounds, recent_pairs, last_pair_used, same_pair_streak, number_last_seen
+    
     if not history:
         return {"status": "no history to delete"}
-    
-    removed = history.pop()
-    
-    temp_history_for_tracking = list(history)
-    
-    number_last_seen = {n: 0 for n in ROULETTE_ORDER}
-    history.clear() 
-    
-    for num in temp_history_for_tracking:
-        history.append(num)
-        
-        for n_internal in ROULETTE_ORDER:
-            if n_internal == num:
-                number_last_seen[n_internal] = 0
-            else:
-                number_last_seen[n_internal] += 1
-    
-    game_state = "LEARNING" if len(history) < IA_CONFIG_NEIGHBORS["LEARNING_PHASE_MIN"] else "IDLE"
+
+    # 1. Revertir el estado
+    game_state = "IDLE"
     active_bet = None
     cooldown_rounds = 0
-    same_pair_streak = 0
-    last_pair_used = None
     
-    print(f"🗑️ Número eliminado: {removed} | Quedan: {len(history)} | Estado reseteado a IDLE/LEARNING")
+    # 2. Revertir el historial
+    deleted_number = history.pop()
     
-    return {
-        "status": "success",
-        "new_history": history[-20:],
-        "stats": get_all_stats()
+    # 3. Re-calcular 'number_last_seen' (MEJORA v3.7)
+    # Es más simple y seguro recalcularlo que intentar revertirlo.
+    if current_mode == 'neighbors':
+        temp_history = list(history)
+        number_last_seen = {n: 0 for n in ROULETTE_ORDER}
+        for i, num in enumerate(reversed(temp_history)):
+            if num in number_last_seen and number_last_seen[num] == 0:
+                # Solo asignamos la primera vez que lo vemos (más reciente)
+                # i=0 es el número más reciente, i=1 el segundo, etc.
+                if i > 0: # El 0 ya está asignado
+                    number_last_seen[num] = i 
+        
+        # Ajuste para los que no se han visto en el historial
+        max_seen = len(temp_history)
+        for n in ROULETTE_ORDER:
+            if n not in temp_history:
+                number_last_seen[n] = max_seen # O un valor grande
+    
+    print(f"⏪ NÚMERO BORRADO: {deleted_number}. Datos recalculados.")
+
+    response = {
+        "action": "DELETE_LAST",
+        "message": f"Número {deleted_number} borrado.",
+        "stats": get_all_stats(),
+        "history": history[-20:],
+        "last_number": history[-1] if history else None
     }
+    
+    # Notificar al long-polling
+    global latest_data_for_frontend, new_update_event
+    latest_data_for_frontend = response
+    new_update_event.set()
+    new_update_event.clear()
+
+    return {"status": "success", "stats": get_all_stats()}
 
 
 def reset_stats_internal():
-    """Función interna para reiniciar estadísticas de ambos modos."""
-    global stats, pair_performance, last_pair_used, same_pair_streak
-    
-    for mode in stats.keys():
-        stats[mode]["total_wins"] = 0
-        stats[mode]["total_losses"] = 0
-        stats[mode]["wins_initial"] = 0
-        stats[mode]["wins_g1"] = 0
-        stats[mode]["wins_g2"] = 0
-        stats[mode]["total_signals"] = 0
-        stats[mode]["current_win_streak"] = 0
-        stats[mode]["recent_results"].clear()
-    
-    pair_performance.clear()
-    last_pair_used = None
-    same_pair_streak = 0
-    
+    """Función interna para resetear estadísticas."""
+    global stats
+    for mode in ["neighbors", "outside"]:
+        stats[mode] = {
+            "total_wins": 0, "total_losses": 0,
+            "wins_initial": 0, "wins_g1": 0, "wins_g2": 0,
+            "total_signals": 0, "current_win_streak": 0,
+            "recent_results": deque(maxlen=IA_CONFIG_NEIGHBORS["ADAPTATION_WINDOW"] if mode == "neighbors" else 20)
+        }
+
 @app.post("/reset_stats")
 def reset_stats():
-    """Resetea contadores de GALE para ambos modos, pero mantiene el historial."""
-    global game_state, active_bet, cooldown_rounds
-    
+    """Resetea solo las estadísticas, mantiene el historial."""
     reset_stats_internal()
-    
-    game_state = "LEARNING" if len(history) < IA_CONFIG_NEIGHBORS["LEARNING_PHASE_MIN"] else "IDLE"
-    active_bet = None
-    cooldown_rounds = 0
-    
-    print("🔄 Estadísticas (ambos modos) reiniciadas")
+    print("🔄 RESET DE ESTADÍSTICAS - El historial se mantiene.")
     return {"status": "success", "stats": get_all_stats()}
+
 
 def reset_all_internal():
     """Función interna para reseteo completo."""
@@ -1254,12 +1249,10 @@ def reset_all_internal():
     
     history.clear()
     reset_stats_internal()
-    
     recent_pairs.clear()
     pattern_memory.clear()
     cluster_cache.clear()
     number_last_seen = {n: 0 for n in ROULETTE_ORDER}
-    
     game_state = "LEARNING"
     active_bet = None
     cooldown_rounds = 0
@@ -1270,6 +1263,7 @@ def reset_all():
     reset_all_internal()
     print("🔄 RESET COMPLETO - Sistema reiniciado a fase de aprendizaje")
     return {"status": "success", "stats": get_all_stats(), "message": "Sistema reiniciado completamente"}
+
 
 @app.get("/debug_info")
 def get_debug_info():
@@ -1284,40 +1278,29 @@ def get_debug_info():
     
     if current_mode == "neighbors":
         reco = find_best_number_bet()
-        tr = history[-IA_CONFIG_NEIGHBORS["LOOKBACK"]:]
-        hot_zones = analyze_hot_zones(tr)
-        breakouts = detect_breakouts(tr)
-        clusters = detect_clusters(tr)
-        top_pairs = sorted(pair_performance.items(), key=lambda x: get_pair_performance_score(x[0]), reverse=True)[:5]
-        
         return {
-            "current_mode": "neighbors",
+            "mode": "neighbors",
+            "phase": get_current_phase(),
+            "confidence": get_confidence_multiplier(),
+            "is_stable": is_stable,
+            "distance_patterns": analyze_distance_patterns(history[-IA_CONFIG_NEIGHBORS["STABILITY_WINDOW"]:]),
             "current_recommendation": reco,
             "history_length": len(history),
             "game_state": game_state,
-            "phase": get_current_phase(),
-            "confidence_multiplier": get_confidence_multiplier(),
-            "top_hot_zones": sorted(hot_zones.items(), key=lambda x: x[1], reverse=True)[:5],
-            "top_breakout_candidates": sorted(breakouts.items(), key=lambda x: x[1], reverse=True)[:5],
-            "active_clusters": clusters[:3] if clusters else [],
-            "top_performing_pairs": [{"pair": p, "score": get_pair_performance_score(p), "stats": s} for p, s in top_pairs],
-            "recent_win_rate": stats["neighbors"]["recent_accuracy"],
-            "current_adaptive_weights": adapt_weights(),
-            "current_stability": reco.get("distance_patterns", {}),
+            "sector_momentum": sector_momentum,
+            "config": IA_CONFIG_NEIGHBORS
         }
-    
-    else:
-        scores = calculate_bet_scores(history)
-        trends = analyze_trends(history)
+    else: # outside
         reco = find_best_outside_bet()
-        
+        trends = analyze_trends(history)
         return {
-            "current_mode": "outside",
-            "bet_scores": scores,
-            "trend_analysis": trends,
-            "streak_analysis_color": analyze_streaks(history, "color"),
-            "streak_analysis_parity": analyze_streaks(history, "parity"),
-            "streak_analysis_range": analyze_streaks(history, "range"),
+            "mode": "outside",
+            "trends": trends,
+            "streaks": {
+                "color": analyze_streaks(history, "color"),
+                "parity": analyze_streaks(history, "parity"),
+                "range": analyze_streaks(history, "range"),
+            },
             "current_recommendation": reco,
             "history_length": len(history),
             "game_state": game_state,
@@ -1325,17 +1308,21 @@ def get_debug_info():
             "config": IA_CONFIG_OUTSIDE
         }
 
+# ==============================================================================
+# BLOQUE DE INICIO DEL SERVIDOR (MODIFICADO PARA RAILWAY)
+# ==============================================================================
 
 if __name__ == "__main__":
-    # ¡LA MAGIA ESTÁ AQUÍ!
-    # Obtenemos el puerto de Railway, o usamos 8000 si corremos localmente
+    
+    # --- ¡CORREGIDO! Obtiene el puerto de Railway o usa 8000 por defecto
     port = int(os.environ.get("PORT", 8000))
-
+    
+    # Mantenemos tus logs de inicio, pero usando la variable 'port'
     print("=" * 70)
     print("🚀 SERVIDOR IA COMBINADO v3.8 (Optimizado para Acertividad)")
     print("=" * 70)
     
-    # ¡ARREGLADO! Usamos 0.0.0.0 y el puerto dinámico
+    # --- ¡CORREGIDO! Muestra 0.0.0.0 y el puerto dinámico
     print(f"   ✓ ¡NUEVO! Sirviendo HTML en http://0.0.0.0:{port}/")
     
     print("=" * 70)
@@ -1357,7 +1344,7 @@ if __name__ == "__main__":
     print("   ✓ Cooldown unificado: 5 rondas.")
     print("=" * 70)
 
-    # ¡LA LÍNEA MÁS IMPORTANTE!
+    # --- ¡LA LÍNEA MÁS IMPORTANTE! ---
     # 1. host="0.0.0.0" (para aceptar conexiones externas)
-    # 2. port=port (para usar el puerto de Railway)
+    # 2. port=port (para usar el puerto dinámico de Railway)
     uvicorn.run(app, host="0.0.0.0", port=port)
