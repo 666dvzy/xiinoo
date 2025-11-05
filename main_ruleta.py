@@ -20,7 +20,7 @@ from collections import deque, Counter, defaultdict
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from pantic import BaseModel
+from pydantic import BaseModel
 
 # ==============================================================================
 # CONFIGURACIÓN GLOBAL Y CONSTANTES
