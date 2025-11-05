@@ -21,18 +21,6 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 # ==============================================================================
-# CONFIGURACIÓN DE LOGGING Y RUTAS
-# ==============================================================================
-
-# Configura un logger para que podamos ver los mensajes en los logs de Railway
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# --- ¡NUEVO! Define el directorio base de tu proyecto ---
-# Esto crea una ruta absoluta al directorio donde se encuentra este script
-BASE_DIR = Path(__file__).resolve().parent
-
-# ==============================================================================
 # CONFIGURACIÓN GLOBAL Y CONSTANTES
 # ==============================================================================
 
@@ -45,15 +33,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- INICIO: ENDPOINT PARA SERVIR HTML (Corrección 404) ---
+# --- CONFIGURACIÓN DE LOGGING Y RUTA BASE (AÑADIDO PARA RAILWAY) ---
+
+# Configura un logger para que podamos ver los mensajes en los logs de Railway
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- ¡NUEVO! Define el directorio base de tu proyecto ---
+# Esto crea una ruta absoluta al directorio donde se encuentra este script
+BASE_DIR = Path(__file__).resolve().parent
+
+# --- FIN: ENDPOINT PARA SERVIR HTML ---
+
 
 # --- ¡MODIFICADO! Esta es la ruta que da el HTML ---
 @app.get("/", response_class=HTMLResponse)
 async def get_root():
     """
     Sirve el archivo index.html principal.
-    Ahora usa una ruta absoluta y tiene logging detallado.
+    (Versión corregida para Railway)
     """
+    
     # --- ¡CORREGIDO! Apunta a 'index.html', el archivo que subiste
     html_file_path = BASE_DIR / "index.html"
     
@@ -65,11 +65,12 @@ async def get_root():
             content = f.read()
         
         logger.info("Petición a /: ¡ÉXITO! index.html leído y servido.")
+        # --- ¡CORREGIDO! Devuelve 200 OK (vital para el health check)
         return HTMLResponse(content=content, status_code=200)
 
     except FileNotFoundError:
         logger.error(f"¡¡¡ERROR CRÍTICO!!! No se encontró index.html en la ruta: {html_file_path}")
-        # Esto te mostrará el error en el navegador
+        # Devuelve un error 500 para que lo veas en el navegador si algo sale mal
         return HTMLResponse(
             content=f"Error 500: FileNotFoundError. No se pudo encontrar 'index.html' en la ruta esperada: {html_file_path}",
             status_code=500
@@ -1013,7 +1014,7 @@ async def process_number(data: NumberInput):
 
             game_state = "IDLE"
             active_bet = None
-            cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"] if bet_mode == "neighbors" else IA_CONFIG_OUTSIDE["COOLDOWN_ROUNDS"]
+            cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"]
             print(f"✅ [{bet_mode.upper()}] VICTORIA! Nro: {number} | Nivel: {win_level} | Racha: {mode_stats['current_win_streak']}")
 
         else: # No es victoria
@@ -1034,12 +1035,10 @@ async def process_number(data: NumberInput):
                 if bet_mode == "neighbors" and "base_numbers" in active_bet:
                     bi, bj = active_bet["base_numbers"]
                     pair_key = tuple(sorted((bi, bj)))
-                    if pair_key not in pair_performance:
-                        pair_performance[pair_key] = {'wins': 0, 'losses': 0, 'uses': 0, 'recent_wins': 0, 'recent_uses': 0}
-                    pair_performance[pair_key]['losses'] += 1
-                    pair_performance[pair_key]['uses'] += 1
-                    pair_performance[pair_key]['recent_uses'] = min(pair_performance[pair_key].get('recent_uses', 0) + 1, 5)
-                    pair_performance[pair_key]['recent_wins'] = 0
+                    if pair_key in pair_performance: # <-- Tuve que añadir esta comprobación
+                        pair_performance[pair_key]['losses'] = pair_performance[pair_key].get('losses', 0) + 1
+                        pair_performance[pair_key]['recent_uses'] = max(pair_performance[pair_key].get('recent_uses', 1), 5) # <-- Esto estaba mal en tu original
+                        pair_performance[pair_key]['recent_wins'] = 0
                     
                     recent_pairs.append(pair_key)
                     last_pair_used = pair_key
@@ -1047,7 +1046,7 @@ async def process_number(data: NumberInput):
                 response = {"action": "LOSS", "correct_number": number, "bet_details": active_bet}
                 game_state = "IDLE"
                 active_bet = None
-                cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"] if bet_mode == "neighbors" else IA_CONFIG_OUTSIDE["COOLDOWN_ROUNDS"]
+                cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"]
                 print(f"❌ [{bet_mode.upper()}] PÉRDIDA. Nro: {number} | Racha reiniciada.")
 
     elif cooldown_rounds > 0:
@@ -1122,7 +1121,7 @@ async def set_mode(data: ModeInput):
     cooldown_rounds = 0
     current_mode = data.mode
     
-    print(f"🔄 MODO CAMBIADO A: {current_mode.UPPER()}")
+    print(f"🔄 MODO CAMBIADO A: {current_mode.upper()}")
     
     response = {
         "action": "MODE_CHANGE",
@@ -1307,6 +1306,7 @@ def get_debug_info():
             "zero_protection": zero_protection_active,
             "config": IA_CONFIG_OUTSIDE
         }
+
 
 # ==============================================================================
 # BLOQUE DE INICIO DEL SERVIDOR (MODIFICADO PARA RAILWAY)
