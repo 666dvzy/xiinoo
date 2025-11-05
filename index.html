@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROULETTE AI - GALE (Xiino Edition)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- VARIABLES DE COLOR Y BASE --- */
+        :root {
+            --neon-cyan: #00ffff; --neon-pink: #ff0080; --neon-green: #00ff41;
+            --neon-red: #ff1f1f; --neon-blue: #0080ff; --neon-purple: #8a2be2;
+            --neon-orange: #ff4500; --neon-yellow: #ffff00; --dark-bg: #0a0a0f;
+            --darker-bg: #050508; --glass-bg: rgba(0, 255, 255, 0.05);
+            --glass-border: rgba(0, 255, 255, 0.2); --text-primary: #fff;
+            --text-secondary: #b0b0b0; --shadow-glow: 0 0 15px; --shadow-glow-strong: 0 0 25px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background-color: var(--dark-bg); 
+            background-image: radial-gradient(circle at 25% 25%, rgba(0, 255, 255, 0.1) 0%, transparent 30%), 
+                              radial-gradient(circle at 75% 75%, rgba(255, 0, 128, 0.1) 0%, transparent 30%); 
+            padding: 20px; 
+            min-height: 100vh; 
+            overflow-x: hidden; 
+            font-family: 'Rajdhani', sans-serif;
+            color: var(--text-primary);
+        }
+        h1, h2, h3 { 
+            font-family: 'Orbitron', sans-serif; 
+            text-shadow: 0 0 10px var(--neon-cyan); 
+            letter-spacing: 1px; 
+        }
+
+        /* --- LAYOUT GRID --- */
+        .grid-container { 
+            display: grid; 
+            grid-template-columns: 3fr 1fr; 
+            grid-template-rows: auto auto 1fr auto auto; 
+            grid-template-areas: 
+                "header header" 
+                "mode-switch mode-switch"
+                "main sidebar" 
+                "history history" 
+                "page-footer page-footer"; 
+            gap: 20px; 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            min-height: calc(100vh - 40px); 
+        }
+
+        /* --- PANELES BASE --- */
+        .panel { 
+            background: var(--glass-bg); 
+            border: 1px solid var(--glass-border); 
+            border-radius: 10px; 
+            backdrop-filter: blur(8px); 
+            box-shadow: 0 4px 15px rgba(0, 0, 0, .4); 
+            transition: all .3s ease;
+            will-change: transform, box-shadow;
+        }
+        .panel-header { 
+            padding: 15px 20px; 
+            border-bottom: 1px solid var(--glass-border); 
+        }
+        .panel-header h3 { color: var(--neon-cyan); }
+        .panel-body { padding: 20px; }
+
+        /* --- HEADER --- */
+        .header { 
+            grid-area: header; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 15px 25px; 
+            border-bottom: 2px solid var(--neon-cyan); 
+            box-shadow: var(--shadow-glow) var(--neon-cyan); 
+        }
+        .header h1 { 
+            font-size: 2.2rem; 
+            color: var(--neon-cyan); 
+            animation: titlePulse 3s infinite ease-in-out; 
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+        .header .credits { 
+            font-size: 0.8rem; 
+            color: var(--text-secondary); 
+            font-style: italic; 
+            opacity: 0.7; 
+        }
+        .status-bar { 
+            display: flex; 
+            gap: 25px; 
+        }
+        .status-item { 
+            text-align: right; 
+            animation: breathe 4s infinite ease-in-out; 
+        }
+        .status-item span { 
+            display: block; 
+            font-size: .9rem; 
+            color: var(--text-secondary); 
+            text-transform: uppercase; 
+        }
+        .status-item strong { 
+            font-size: 1.4rem; 
+            font-family: 'Orbitron'; 
+        }
+
+        /* --- MODE SWITCHER --- */
+        .mode-switcher-panel {
+            grid-area: mode-switch;
+            padding: 15px 25px;
+        }
+        .mode-switcher {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        .mode-btn {
+            flex: 1;
+            max-width: 250px;
+            padding: 15px 25px;
+            font-size: 1.1rem;
+            font-family: 'Orbitron';
+            font-weight: 700;
+            border: 2px solid var(--glass-border);
+            border-radius: 8px;
+            background: var(--darker-bg);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all .3s ease;
+            text-transform: uppercase;
+        }
+        .mode-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            border-color: var(--neon-cyan);
+        }
+        .mode-btn.active {
+            background: var(--neon-cyan);
+            color: var(--dark-bg);
+            border-color: var(--neon-cyan);
+            box-shadow: var(--shadow-glow-strong) var(--neon-cyan);
+        }
+        .mode-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* --- MAIN DISPLAY --- */
+        .main-display { 
+            grid-area: main; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 400px; 
+            animation: fadeIn .5s ease; 
+            transition: box-shadow 0.3s ease, border-color 0.3s ease; 
+        }
+        .display-content { 
+            display: none;
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center; 
+            width: 100%; 
+            height: 100%; 
+            padding: 30px; 
+        }
+        .display-content.active {
+            display: flex;
+            animation: slideInUp 0.6s ease-out; 
+        }
+        .display-content h2 { 
+            font-size: 2.5rem; 
+            margin-bottom: 20px; 
+        }
+        
+        .display-signal h2 { 
+            color: var(--neon-green); 
+            text-shadow: 0 0 15px var(--neon-green); 
+        }
+        .display-idle h2 { color: var(--text-secondary); }
+        .display-cooldown h2 { color: var(--neon-yellow); }
+        .display-learning h2 { color: var(--neon-orange); }
+        .display-win h2 { color: var(--neon-green); }
+        .display-loss h2 { color: var(--neon-red); }
+        
+        .signal-box { 
+            background: var(--darker-bg); 
+            border-radius: 8px; 
+            padding: 25px; 
+            margin-top: 15px; 
+            border: 1px solid var(--glass-border); 
+            min-width: 350px; 
+            text-align: center; 
+            transition: all 0.3s ease; 
+            animation: subtlePulseBorder 2s infinite alternate; 
+        }
+        .signal-numbers { 
+            font-size: 2rem; 
+            font-family: 'Orbitron'; 
+            font-weight: 700; 
+            margin-bottom: 10px; 
+            color: var(--neon-cyan);
+            text-shadow: 0 0 15px var(--neon-cyan);
+        }
+        .signal-details { 
+            font-size: 1rem; 
+            color: var(--text-secondary); 
+            margin-top: 10px;
+        }
+        .signal-reasoning {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-top: 15px;
+            max-width: 90%;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar { 
+            grid-area: sidebar; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 20px; 
+        }
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 15px; 
+        }
+        .stat-box { 
+            background: var(--darker-bg); 
+            border-radius: 8px; 
+            padding: 15px; 
+            text-align: center; 
+        }
+        .stat-box-full { grid-column: 1/-1; }
+        .stat-box span { 
+            display: block; 
+            font-size: .9rem; 
+            color: var(--text-secondary); 
+            margin-bottom: 5px; 
+        }
+        .stat-box strong { 
+            font-size: 1.8rem; 
+            font-family: 'Orbitron'; 
+            color: var(--neon-cyan);
+        }
+        
+        /* Colores específicos */
+        #wins-display { color: var(--neon-green) !important; }
+        #losses-display { color: var(--neon-red) !important; }
+        #accuracy-display { color: var(--neon-cyan) !important; }
+        #streak-display { color: var(--neon-green) !important; }
+        
+        /* Controles Manuales */
+        .input-panel .panel-body { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 15px; 
+        }
+        
+        #num-input {
+            background: var(--darker-bg);
+            border: 2px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron';
+            color: var(--text-primary);
+            text-align: center;
+            transition: all .3s ease;
+        }
+        #num-input:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: var(--shadow-glow) var(--neon-cyan);
+        }
+        
+        .btn { 
+            padding: 15px; 
+            font-size: 1.1rem; 
+            font-family: 'Orbitron'; 
+            border-radius: 8px; 
+            border: none; 
+            cursor: pointer; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            transition: all .3s ease; 
+            font-weight: 600;
+        }
+        .btn-primary { 
+            background: var(--neon-cyan); 
+            color: var(--dark-bg); 
+            box-shadow: var(--shadow-glow) var(--neon-cyan); 
+        }
+        .btn-primary:hover:not(:disabled) { 
+            box-shadow: var(--shadow-glow-strong) var(--neon-cyan); 
+            filter: brightness(1.2); 
+            transform: translateY(-2px);
+        }
+        .btn:disabled { 
+            background: #555; 
+            color: #999; 
+            cursor: not-allowed; 
+            box-shadow: none; 
+            opacity: 0.5;
+        }
+
+        /* --- HISTORY PANEL --- */
+        .history-panel { 
+            grid-area: history; 
+            min-height: 100px; 
+        }
+        .history-container { 
+            display: flex; 
+            overflow-x: auto; 
+            overflow-y: hidden; 
+            gap: 10px; 
+            padding: 10px 0; 
+            white-space: nowrap;
+            scroll-behavior: smooth;
+        }
+        .history-container::-webkit-scrollbar {
+            height: 8px;
+        }
+        .history-container::-webkit-scrollbar-track {
+            background: var(--darker-bg);
+            border-radius: 4px;
+        }
+        .history-container::-webkit-scrollbar-thumb {
+            background: var(--glass-border);
+            border-radius: 4px;
+        }
+        .history-container::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-cyan);
+        }
+        .history-number { 
+            width: 45px; 
+            height: 45px; 
+            border-radius: 50%; 
+            display: inline-flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 1.2rem; 
+            font-weight: 700; 
+            flex-shrink: 0; 
+            color: #fff; 
+            border: 2px solid rgba(0,0,0,.4); 
+            animation: popIn .4s ease-out;
+            font-family: 'Orbitron';
+        }
+        .num-red { 
+            background: var(--neon-red); 
+            border-color: #ff4f4f;
+            box-shadow: 0 0 10px rgba(255, 31, 31, 0.5);
+        } 
+        .num-black { 
+            background: #2a2a2a; 
+            border-color: #4a4a4a; 
+        } 
+        .num-zero { 
+            background: var(--neon-green); 
+            border-color: #4fff81;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+        }
+
+        /* --- FOOTER --- */
+        .page-footer { 
+            grid-area: page-footer; 
+            text-align: center; 
+            font-size: 0.9rem; 
+            color: var(--text-secondary); 
+            opacity: 0.6; 
+            padding-top: 15px; 
+            margin-top: 15px; 
+            border-top: 1px dashed var(--glass-border); 
+            animation: fadeIn 2s ease-in; 
+        }
+
+        /* --- TOAST --- */
+        #toast { 
+            position: fixed; 
+            bottom: 20px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: var(--neon-green); 
+            color: var(--dark-bg); 
+            padding: 12px 25px; 
+            border-radius: 5px; 
+            font-family: 'Orbitron'; 
+            font-size: 1rem; 
+            box-shadow: var(--shadow-glow-strong) var(--neon-green); 
+            visibility: hidden; 
+            opacity: 0; 
+            transition: all .4s ease; 
+            z-index: 1000; 
+        }
+        #toast.show { 
+            visibility: visible; 
+            opacity: 1; 
+            bottom: 40px; 
+        }
+        #toast.error { 
+            background: var(--neon-red); 
+            box-shadow: var(--shadow-glow-strong) var(--neon-red); 
+            color: var(--text-primary); 
+        }
+
+        /* --- ANIMACIONES --- */
+        @keyframes fadeIn { 
+            from { opacity: 0; } 
+            to { opacity: 1; } 
+        }
+        @keyframes popIn { 
+            0% { transform: scale(0.5); opacity: 0; } 
+            100% { transform: scale(1); opacity: 1; } 
+        }
+        @keyframes slideInUp { 
+            0% { transform: translateY(20px); opacity: 0; } 
+            100% { transform: translateY(0); opacity: 1; } 
+        }
+        @keyframes titlePulse { 
+            0%, 100% { text-shadow: 0 0 10px var(--neon-cyan); opacity: 0.9; } 
+            50% { text-shadow: 0 0 25px var(--neon-cyan), 0 0 5px #fff; opacity: 1; } 
+        }
+        @keyframes breathe { 
+            0%, 100% { opacity: 0.8; transform: scale(1); } 
+            50% { opacity: 1; transform: scale(1.02); } 
+        }
+        @keyframes subtlePulseBorder { 
+            0%, 100% { 
+                border-color: var(--glass-border); 
+                box-shadow: 0 0 5px rgba(0,0,0,0.2); 
+            } 
+            50% { 
+                border-color: var(--neon-cyan); 
+                box-shadow: 0 0 10px var(--neon-cyan), 0 0 5px rgba(0,0,0,0.3); 
+            } 
+        }
+        @keyframes green-flash { 
+            0% { 
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 255, 65, 0.5); 
+                border-color: var(--glass-border); 
+            } 
+            50% { 
+                box-shadow: 0 6px 25px rgba(0, 0, 0, 0.5), 0 0 40px var(--neon-green), inset 0 0 20px rgba(0, 255, 65, 0.3); 
+                border-color: var(--neon-green); 
+                transform: scale(1.01); 
+            } 
+            100% { 
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 255, 65, 0.5); 
+                border-color: var(--glass-border); 
+            } 
+        }
+        .win-flash { 
+            animation: green-flash 0.8s ease-out; 
+        }
+
+        /* --- RESPONSIVE --- */
+        @media (max-width: 1024px) {
+            .grid-container {
+                grid-template-columns: 1fr;
+                grid-template-areas: 
+                    "header"
+                    "mode-switch"
+                    "main"
+                    "sidebar"
+                    "history"
+                    "page-footer";
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            .status-bar {
+                gap: 15px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 10px;
+            }
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            .status-bar {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .mode-switcher {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="grid-container">
+
+        <header class="panel header">
+            <h1>
+                🎰 ROULETTE AI <span style="color: var(--neon-cyan);">GALE</span>
+                <span class="credits">by xiino</span>
+            </h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span>Modo</span>
+                    <strong id="current-mode">---</strong>
+                </div>
+                <div class="status-item">
+                    <span>Estado</span>
+                    <strong id="game-state">---</strong>
+                </div>
+                <div class="status-item">
+                    <span>Datos</span>
+                    <strong id="data-count">0</strong>
+                </div>
+            </div>
+        </header>
+
+        <div class="panel mode-switcher-panel">
+            <div class="mode-switcher">
+                <button id="btn-neighbors" class="mode-btn active">🎯 Modo Neighbors</button>
+                <button id="btn-outside" class="mode-btn">📊 Modo Outside</button>
+            </div>
+        </div>
+
+        <main class="panel main-display" id="displayPanel">
+            <div class="display-content display-signal" id="display-signal">
+                <h2>🎯 ENTRAR AHORA</h2>
+                <div class="signal-box">
+                    <div class="signal-numbers" id="signal-numbers">17, 34, 6</div>
+                    <div class="signal-details" id="signal-details">Cobertura: 9 números</div>
+                    <div class="signal-reasoning" id="signal-reasoning">Patrón detectado...</div>
+                </div>
+            </div>
+            
+            <div class="display-content display-idle" id="display-idle">
+                <h2>⏳ ESPERANDO SEÑAL...</h2>
+                <p>Calculando próxima entrada.</p>
+            </div>
+            
+            <div class="display-content display-cooldown" id="display-cooldown">
+                <h2>⏸️ COOLDOWN</h2>
+                <p>Esperando <strong id="cooldown-rounds" style="font-size: 2rem; font-family: 'Orbitron'; color: var(--neon-yellow);">2</strong> rondas...</p>
+            </div>
+            
+            <div class="display-content display-learning active" id="display-learning">
+                <h2>⚡ RECOLECTANDO DATOS...</h2>
+                <p>El sistema está aprendiendo patrones.</p>
+            </div>
+
+            <div class="display-content display-win" id="display-win">
+                <h2>🎉 ¡VICTORIA!</h2>
+                <div class="signal-box">
+                    <div class="signal-numbers" id="win-number">17</div>
+                    <div class="signal-details" id="win-level">Victoria en G0</div>
+                </div>
+            </div>
+
+            <div class="display-content display-loss" id="display-loss">
+                <h2>💥 PÉRDIDA</h2>
+                <div class="signal-box">
+                    <div class="signal-numbers" id="loss-number">8</div>
+                    <div class="signal-details">Ciclo terminado. Iniciando cooldown...</div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="sidebar">
+            <div class="panel stats-panel">
+                <div class="panel-header"><h3>📊 ESTADÍSTICAS</h3></div>
+                <div class="panel-body">
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <span>Victorias</span>
+                            <strong id="wins-display">0</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Pérdidas</span>
+                            <strong id="losses-display">0</strong>
+                        </div>
+                        <div class="stat-box stat-box-full">
+                            <span>Precisión</span>
+                            <strong id="accuracy-display">0.0%</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Wins G0</span>
+                            <strong id="wins-g0-display">0</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Wins G1</span>
+                            <strong id="wins-g1-display">0</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Wins G2</span>
+                            <strong id="wins-g2-display">0</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Señales</span>
+                            <strong id="total-signals-display">0</strong>
+                        </div>
+                        <div class="stat-box stat-box-full">
+                            <span>Racha Victorias</span>
+                            <strong id="streak-display">0</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel input-panel">
+                <div class="panel-header"><h3>✋ ENTRADA MANUAL</h3></div>
+                <div class="panel-body">
+                    <p style="text-align: center; color: var(--text-secondary); margin-bottom: 10px;">Añadir último número:</p>
+                    <input type="number" id="num-input" placeholder="0-36" min="0" max="36">
+                    <button id="add-btn" class="btn btn-primary">🎲 ENVIAR NÚMERO</button>
+                </div>
+            </div>
+        </aside>
+
+        <footer class="panel history-panel">
+            <div class="panel-header"><h3>📜 HISTORIAL RECIENTE</h3></div>
+            <div class="panel-body">
+                <div class="history-container" id="history-container"></div>
+            </div>
+        </footer>
+
+        <div class="page-footer">
+            The World Is Mine
+        </div>
+
+    </div>
+
+    <div id="toast" role="alert" aria-live="polite">Mensaje</div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+        const ROULETTE_RED = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+
+        // --- ELEMENTOS DOM ---
+        const elements = {
+            numInput: document.getElementById('num-input'),
+            btnSubmit: document.getElementById('add-btn'),
+            btnNeighbors: document.getElementById('btn-neighbors'),
+            btnOutside: document.getElementById('btn-outside'),
+            
+            historyContainer: document.getElementById('history-container'),
+            displayPanel: document.getElementById('displayPanel'),
+            displaySignal: document.getElementById('display-signal'),
+            displayIdle: document.getElementById('display-idle'),
+            displayCooldown: document.getElementById('display-cooldown'),
+            displayLearning: document.getElementById('display-learning'),
+            displayWin: document.getElementById('display-win'),
+            displayLoss: document.getElementById('display-loss'),
+            
+            signalNumbers: document.getElementById('signal-numbers'),
+            signalDetails: document.getElementById('signal-details'),
+            signalReasoning: document.getElementById('signal-reasoning'),
+            
+            winNumber: document.getElementById('win-number'),
+            winLevel: document.getElementById('win-level'),
+            lossNumber: document.getElementById('loss-number'),
+            
+            cooldownRounds: document.getElementById('cooldown-rounds'),
+            
+            currentMode: document.getElementById('current-mode'),
+            gameState: document.getElementById('game-state'),
+            dataCount: document.getElementById('data-count'),
+            
+            winsDisplay: document.getElementById('wins-display'),
+            lossesDisplay: document.getElementById('losses-display'),
+            accuracyDisplay: document.getElementById('accuracy-display'),
+            streakDisplay: document.getElementById('streak-display'),
+            winsG0Display: document.getElementById('wins-g0-display'),
+            winsG1Display: document.getElementById('wins-g1-display'),
+            winsG2Display: document.getElementById('wins-g2-display'),
+            totalSignalsDisplay: document.getElementById('total-signals-display'),
+            
+            toast: document.getElementById('toast')
+        };
+
+        // --- ESTADO ---
+        let toastTimeoutId = null;
+        let previousAction = null;
+
+        // --- UTILIDADES ---
+        function showToast(message, isError = false, duration = 2000) {
+            elements.toast.textContent = message;
+            elements.toast.className = 'show' + (isError ? ' error' : '');
+            
+            clearTimeout(toastTimeoutId);
+            toastTimeoutId = setTimeout(() => {
+                elements.toast.className = '';
+            }, duration);
+        }
+
+        function getNumberColorClass(num) {
+            if (num === 0) return 'num-zero';
+            if (ROULETTE_RED.includes(num)) return 'num-red';
+            return 'num-black';
+        }
+
+        function switchDisplay(targetDisplay) {
+            Object.values(elements).forEach(el => {
+                if (el && el.classList && el.classList.contains('display-content')) {
+                    el.classList.remove('active');
+                }
+            });
+            
+            if (targetDisplay && targetDisplay.classList) {
+                targetDisplay.classList.add('active');
+            }
+        }
+
+        // --- RENDERIZADO ---
+        function updateHistory(history = []) {
+            const fragment = document.createDocumentFragment();
+            const displayHistory = history.slice(-50);
+            
+            displayHistory.forEach(num => {
+                const numEl = document.createElement('div');
+                numEl.className = `history-number ${getNumberColorClass(num)}`;
+                numEl.textContent = num;
+                fragment.appendChild(numEl);
+            });
+            
+            elements.historyContainer.innerHTML = '';
+            elements.historyContainer.appendChild(fragment);
+            
+            requestAnimationFrame(() => {
+                elements.historyContainer.scrollLeft = elements.historyContainer.scrollWidth;
+            });
+        }
+
+        function updateStats(stats) {
+            if (!stats) return;
+
+            const currentMode = stats.global?.current_mode || 'neighbors';
+            const modeStats = currentMode === 'neighbors' ? stats.neighbors : stats.outside;
+            
+            if (modeStats) {
+                elements.winsDisplay.textContent = modeStats.wins;
+                elements.lossesDisplay.textContent = modeStats.losses;
+                elements.accuracyDisplay.textContent = modeStats.accuracy_percentage + '%';
+                elements.streakDisplay.textContent = modeStats.current_win_streak;
+                elements.winsG0Display.textContent = modeStats.wins_initial;
+                elements.winsG1Display.textContent = modeStats.wins_g1;
+                elements.winsG2Display.textContent = modeStats.wins_g2;
+                elements.totalSignalsDisplay.textContent = modeStats.total_signals;
+            }
+            
+            if (stats.global) {
+                const g = stats.global;
+                elements.currentMode.textContent = g.current_mode.toUpperCase();
+                elements.gameState.textContent = g.game_state;
+                elements.dataCount.textContent = g.data_count;
+                
+                elements.btnNeighbors.classList.toggle('active', g.current_mode === 'neighbors');
+                elements.btnOutside.classList.toggle('active', g.current_mode === 'outside');
+            }
+        }
+
+        function updateSignal(data) {
+            const action = data.action;
+            const details = data.bet_details || {};
+            const reasoning = data.reasoning || data.message || '';
+            const mode = data.stats?.global?.current_mode || 'neighbors';
+            
+            // Detectar victoria y aplicar animación
+            if (action === 'WIN' && previousAction !== 'WIN') {
+                elements.displayPanel.classList.add('win-flash');
+                setTimeout(() => {
+                    elements.displayPanel.classList.remove('win-flash');
+                }, 800);
+            }
+            
+            previousAction = action;
+            
+            switch(action) {
+                case 'INITIAL':
+                case 'G1':
+                case 'G2':
+                    if (mode === 'neighbors') {
+                        const baseNums = details.base_numbers?.join(', ') || '---';
+                        elements.signalNumbers.textContent = baseNums;
+                        elements.signalDetails.textContent = `Cobertura: ${details.coverage_count || 0} números`;
+                    } else {
+                        elements.signalNumbers.textContent = details.bet_type || '---';
+                        elements.signalDetails.textContent = `Score: ${details.score?.toFixed(2) || '0.00'}`;
+                    }
+                    elements.signalReasoning.textContent = reasoning;
+                    switchDisplay(elements.displaySignal);
+                    
+                    // Actualizar título según gale
+                    const galeText = action === 'INITIAL' ? 'ENTRAR AHORA' : `MANTENER GALE ${action}`;
+                    elements.displaySignal.querySelector('h2').textContent = `🎯 ${galeText}`;
+                    break;
+                    
+                case 'WIN':
+                    elements.winNumber.textContent = data.correct_number || '?';
+                    elements.winLevel.textContent = `Victoria en ${data.win_level || 'G0'}`;
+                    switchDisplay(elements.displayWin);
+                    break;
+                    
+                case 'LOSS':
+                    elements.lossNumber.textContent = data.correct_number || '?';
+                    switchDisplay(elements.displayLoss);
+                    break;
+                    
+                case 'COOLDOWN':
+                    elements.cooldownRounds.textContent = data.rounds_left || '2';
+                    switchDisplay(elements.displayCooldown);
+                    break;
+                    
+                case 'LEARNING':
+                case 'WAIT_DATA_OUTSIDE':
+                case 'WAIT_STABILITY':
+                    elements.displayLearning.querySelector('p').textContent = data.message || 'El sistema está aprendiendo patrones.';
+                    switchDisplay(elements.displayLearning);
+                    break;
+                    
+                case 'IDLE':
+                case 'READY':
+                case 'MODE_CHANGE':
+                case 'NO_UPDATE':
+                default:
+                    switchDisplay(elements.displayIdle);
+                    break;
+            }
+        }
+
+        function updateUI(data) {
+            if (!data) return;
+            
+            if (data.history) {
+                updateHistory(data.history);
+            }
+            if (data.stats) {
+                updateStats(data.stats);
+            }
+            if (data.action) {
+                updateSignal(data);
+            }
+        }
+
+        // --- API CALLS ---
+        async function processNumber() {
+            const number = parseInt(elements.numInput.value);
+            if (isNaN(number) || number < 0 || number > 36) {
+                showToast("Número inválido (0-36)", true);
+                return;
+            }
+            
+            elements.btnSubmit.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_URL}/process_number`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ number: number })
+                });
+                
+                if (!response.ok) throw new Error('Error en la respuesta del servidor');
+                
+                showToast(`Número ${number} añadido`, false, 1500);
+                elements.numInput.value = '';
+                
+            } catch (error) {
+                console.error("Error al procesar número:", error);
+                showToast('Error de red', true, 4000);
+            } finally {
+                setTimeout(() => {
+                    elements.btnSubmit.disabled = false;
+                }, 300);
+            }
+        }
+
+        async function setMode(mode) {
+            if (elements.btnNeighbors.disabled) return;
+            
+            elements.btnNeighbors.disabled = true;
+            elements.btnOutside.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_URL}/set_mode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode })
+                });
+                
+                if (!response.ok) throw new Error('Error al cambiar de modo');
+                
+                const data = await response.json();
+                if(data.stats) {
+                    updateStats(data.stats);
+                    updateSignal({ action: "MODE_CHANGE", stats: data.stats });
+                }
+                
+                showToast(`Modo ${mode.toUpperCase()} activado`, false, 1500);
+                
+            } catch (error) {
+                console.error("Error al cambiar de modo:", error);
+                showToast('Error al cambiar modo', true, 3000);
+            } finally {
+                setTimeout(() => {
+                    elements.btnNeighbors.disabled = false;
+                    elements.btnOutside.disabled = false;
+                }, 500);
+            }
+        }
+
+        async function startLongPolling() {
+            while(true) {
+                try {
+                    const response = await fetch(`${API_URL}/listen_for_updates`);
+                    
+                    if (response.status === 502) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        continue;
+                    }
+                    
+                    if (!response.ok) {
+                        throw new Error(`Respuesta de red no fue ok: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data && data.action !== "NO_UPDATE") {
+                        console.log("Actualización recibida:", data);
+                        updateUI(data);
+                    }
+                } catch (e) {
+                    console.error("Error en long-polling:", e);
+                    elements.gameState.textContent = "ERROR";
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
+        }
+
+        async function getInitialState() {
+            try {
+                const response = await fetch(`${API_URL}/initial_state`);
+                if (!response.ok) throw new Error('No se pudo cargar el estado inicial');
+                
+                const data = await response.json();
+                updateUI(data);
+                
+            } catch (error) {
+                console.error("Error al cargar estado inicial:", error);
+                elements.gameState.textContent = "ERROR";
+                showToast('Error al conectar', true, 5000);
+            }
+        }
+
+        // --- INICIALIZACIÓN ---
+        function initialize() {
+            console.log('🎰 ROULETTE AI - Inicializando...');
+            
+            elements.btnSubmit.addEventListener('click', processNumber);
+            elements.numInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') processNumber();
+            });
+            
+            elements.btnNeighbors.addEventListener('click', () => setMode('neighbors'));
+            elements.btnOutside.addEventListener('click', () => setMode('outside'));
+
+            getInitialState();
+            startLongPolling();
+        }
+
+        document.addEventListener('DOMContentLoaded', initialize);
+        
+        window.addEventListener('beforeunload', () => {
+            clearTimeout(toastTimeoutId);
+        });
+    </script>
+</body>
+</html>
