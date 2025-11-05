@@ -9,7 +9,7 @@ from selenium.common.exceptions import TimeoutException, StaleElementReferenceEx
 
 # --- CONFIGURACIÓN ---
 URL_TO_SCRAPE = 'https://gamblingcounting.com/evolution-auto-roulette'
-API_URL = 'http://127.0.0.1:8000' # URL base de tu backend
+API_URL = 'https://roulette-ai-production.up.railway.app'  # ← TU URL AQUÍ
 CSS_SELECTOR_ALL_NUMBERS = ".live-game-page__block__results.live-game-page__block__results--roulette.live-game-page__block__content div.roulette-number.roulette-number--small"
 XPATH_SELECTOR_AGE_GATE_BUTTON = "//button[contains(., 'Sí, tengo 18 años')]"
 XPATH_SELECTOR_COOKIE_BUTTON = "//button[contains(text(), 'Accept')]"
@@ -240,3 +240,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
