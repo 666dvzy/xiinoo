@@ -2,7 +2,8 @@
 """
 Backend Combinado de IA de Ruleta v3.8
 =======================================
-(Archivo modificado por Gemini para el despliegue en Railway)
+(Archivo modificado por Gemini para el despliegue en Railway
+ CON TAREAS EN SEGUNDO PLANO para arreglar timeouts)
 """
 
 # --- IMPORTS (CON ADICIONES PARA RAILWAY) ---
@@ -15,10 +16,11 @@ import logging # <-- Añadido para logs de depuración
 from pathlib import Path # <-- Añadido para rutas absolutas
 from typing import List, Dict, Any, Optional, Tuple
 from collections import deque, Counter, defaultdict
-from fastapi import FastAPI, HTTPException
+# --- ¡IMPORTANTE! Añadido BackgroundTasks ---
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pantic import BaseModel
 
 # ==============================================================================
 # CONFIGURACIÓN GLOBAL Y CONSTANTES
@@ -104,48 +106,38 @@ OUTSIDE_BETS = {
 
 # --- Configuración del Modo NEIGHBORS ---
 IA_CONFIG_NEIGHBORS: Dict[str, Any] = {
-    # CONTROL DE FASES (MEJORA v3.0)
-    "LEARNING_PHASE_MIN":195,  # Empezar a apostar
-    "READY_PHASE_MIN": 190,     # Fase de análisis (50-150)
-    "OPTIMAL_DATA_THRESHOLD": 190, # Fase óptima (150+)
-    
-    "MIN_HISTORY_FOR_ANALYSIS": 50, # Mínimo para find_best_number_bet
+    "LEARNING_PHASE_MIN": 195,
+    "READY_PHASE_MIN": 190,
+    "OPTIMAL_DATA_THRESHOLD": 190,
+    "MIN_HISTORY_FOR_ANALYSIS": 50,
     "LOOKBACK": 190,
     "MAX_GALE": 2,
-    "COOLDOWN_ROUNDS": 5, # Unificado
+    "COOLDOWN_ROUNDS": 5,
     "FORCE_ENTRY": True,
-    "NEIGHBOURS": 4, # 4 vecinos -> 9 números por set (1+4+4). 2 sets sin solapamiento = 18.
-
-    # FILTRO DE ESTABILIDAD
+    "NEIGHBOURS": 4,
     "USE_STABILITY_FILTER": True,
     "STABILITY_WINDOW": 30,
     "VOLATILITY_THRESHOLD": 9.5,
-
-    # PESOS
     "COVERAGE_WEIGHT": 2.0, 
     "COVERAGE_QUALITY_WEIGHT": 10.0, 
     "FREQUENCY_WEIGHT": 8.0,
     "RECENCY_WEIGHT": 7.0, 
     "HOT_ZONE_WEIGHT": 9.0, 
-    "DIVERSITY_WEIGHT": 4.0,  # ✅ MEJORA 2a: Cambiado de 0.4 a 4.0
+    "DIVERSITY_WEIGHT": 4.0,
     "COLD_ZONE_BONUS": 0.1, 
     "PATTERN_WEIGHT": 5.0, 
     "CLUSTER_WEIGHT": 6.0,
-
-    # PENALIZACIONES
     "REPEAT_BUFFER_PAIRS": 12, 
     "MAX_CONSEC_SAME_PAIR": 0, 
     "REPEAT_PENALTY": 25.0,
     "OVERLAP_PENALTY_MULTIPLIER": 5.0, 
     "COLD_ZONE_PENALTY": 12.0,
-
     "ACCURACY_WEIGHT": 30.0, 
     "DECAY_GAMMA": 0.78, 
     "HOT_ZONE_WINDOW": 25,
     "HOT_ZONE_THRESHOLD": 1.5,
     "ADAPTIVE_MODE": True, 
     "ADAPTATION_WINDOW": 6,
-    
     "BREAKOUT_DETECTION": True, 
     "BREAKOUT_THRESHOLD": 18, 
     "CLUSTER_DETECTION": True,
@@ -154,31 +146,27 @@ IA_CONFIG_NEIGHBORS: Dict[str, Any] = {
     "DYNAMIC_TOP_NUMBERS": True,
     "MIN_TOP_NUMBERS": 12, 
     "MAX_TOP_NUMBERS": 20,
-    
     "CONFIDENCE_BOOST_PER_100_DATA": 0.10,
 }
 
 # --- Configuración del Modo OUTSIDE ---
 IA_CONFIG_OUTSIDE: Dict[str, Any] = {
     "MIN_HISTORY_FOR_ANALYSIS": 8,
-    
-    # ✅ MEJORA 2c: LONG_TERM_BALANCE_WEIGHT puesto en 0.0 (estrategia simplificada)
     "LOOKBACKS": {
-        "long_term_balance": 75, # Ventana larga (DESACTIVADA)
-        "momentum": 12           # Ventana corta (Momentum) - ESTRATEGIA PRINCIPAL
+        "long_term_balance": 75,
+        "momentum": 12
     },
     "WINDOW_WEIGHTS": {
-        "long_term_balance": 0.0,  # ✅ MEJORA 2c: Cambiado de 40.0 a 0.0
+        "long_term_balance": 0.0,
         "momentum": 20.0
     },
-    
     "ZERO_PROTECTION_WEIGHT": 10.0,
     "STREAK_ANALYSIS_WEIGHT": 15.0,
     "STREAK_ANALYSIS_WINDOW": 20,
     "STREAK_THRESHOLD": 0.6,
     "CHOP_THRESHOLD": 0.4,
     "MAX_GALE": 2,
-    "COOLDOWN_ROUNDS": 2, # Unificado
+    "COOLDOWN_ROUNDS": 2,
     "FORCE_ENTRY": True
 }
 
@@ -187,16 +175,14 @@ IA_CONFIG_OUTSIDE: Dict[str, Any] = {
 # ESTADO GLOBAL DEL SERVIDOR
 # ==============================================================================
 
-# --- Estado Compartido ---
 history: List[int] = []
-game_state: str = "LEARNING" # LEARNING, IDLE, AWAITING_INITIAL_RESULT, AWAITING_G1_RESULT, AWAITING_G2_RESULT
+# --- ¡NUEVO ESTADO! Para evitar atascos
+game_state: str = "LEARNING" # LEARNING, IDLE, AWAITING_..., ANALYZING_BG
 active_bet: Optional[Dict[str, Any]] = None
-current_mode: str = "neighbors" # 'neighbors' o 'outside'
+current_mode: str = "neighbors"
 cooldown_rounds: int = 0
 new_update_event = asyncio.Event()
 latest_data_for_frontend: Optional[Dict[str, Any]] = None
-
-# --- Estado Específico de Neighbors ---
 is_stable: bool = True
 recent_pairs = deque([], maxlen=IA_CONFIG_NEIGHBORS["REPEAT_BUFFER_PAIRS"])
 last_pair_used: Optional[tuple] = None
@@ -206,11 +192,8 @@ number_last_seen: Dict[int, int] = {n: 0 for n in ROULETTE_ORDER}
 pattern_memory: deque = deque(maxlen=IA_CONFIG_NEIGHBORS["PATTERN_MEMORY"])
 cluster_cache: Dict[str, List[List[int]]] = {}
 sector_momentum: Dict[str, float] = {}
-
-# --- Estado Específico de Outside ---
 zero_protection_active: bool = False
 
-# --- ESTADÍSTICAS SEPARADAS (MEJORA v3.0) ---
 stats: Dict[str, Dict[str, Any]] = {
     "neighbors": {
         "total_wins": 0, "total_losses": 0,
@@ -235,9 +218,14 @@ class NumberInput(BaseModel):
 
 class ModeInput(BaseModel):
     mode: str
+    
+# --- ¡NUEVO! Modelo para carga masiva ---
+class BulkNumbersInput(BaseModel):
+    numbers: List[int]
 
 # ==============================================================================
 # FUNCIONES HELPER (NEIGHBORS)
+# (Todo tu código de IA va aquí, sin cambios)
 # ==============================================================================
 
 def get_current_phase() -> str:
@@ -255,12 +243,9 @@ def get_confidence_multiplier() -> float:
     data_count = len(history)
     if data_count < IA_CONFIG_NEIGHBORS["LEARNING_PHASE_MIN"]:
         return 0.0
-    
     extra_data = data_count - IA_CONFIG_NEIGHBORS["LEARNING_PHASE_MIN"]
     boost = (extra_data // 100) * IA_CONFIG_NEIGHBORS["CONFIDENCE_BOOST_PER_100_DATA"]
-    
     base_confidence = 0.65 if data_count < IA_CONFIG_NEIGHBORS["READY_PHASE_MIN"] else 1.0
-    
     return min(base_confidence + boost, 2.0)
 
 def get_neighbour_set(number: int, neighbours: Optional[int] = None) -> List[int]:
@@ -493,10 +478,10 @@ def get_pair_performance_score(pair: tuple) -> float:
 
 # ==============================================================================
 # FUNCIONES HELPER (OUTSIDE)
+# (Tu código de IA)
 # ==============================================================================
 
 def get_number_properties(number: int) -> Dict[str, str]:
-    """Obtiene las propiedades de un número para análisis"""
     if number == 0:
         return {"color": "GREEN", "parity": "ZERO", "range": "ZERO"}
     properties = {}
@@ -509,7 +494,6 @@ def get_number_properties(number: int) -> Dict[str, str]:
     return properties
 
 def analyze_trends(history_data: List[int]) -> Dict[str, Dict[str, float]]:
-    """Analiza tendencias en las apuestas externas"""
     if len(history_data) < 5:
         return {}
     
@@ -543,10 +527,6 @@ def analyze_trends(history_data: List[int]) -> Dict[str, Dict[str, float]]:
     return trends
 
 def analyze_streaks(history_data: List[int], bet_type: str) -> Dict[str, float]:
-    """
-    Analiza rachas (streaks) y cortes (chops) para un tipo de apuesta.
-    'bet_type' puede ser 'color', 'parity', o 'range'.
-    """
     window_size = IA_CONFIG_OUTSIDE["STREAK_ANALYSIS_WINDOW"]
     if len(history_data) < window_size:
         return {}
@@ -608,7 +588,6 @@ def find_best_outside_bet() -> Dict[str, Any]:
     if len(history_data) < IA_CONFIG_OUTSIDE["MIN_HISTORY_FOR_ANALYSIS"]:
         return {"bet": "LEARNING", "covered_numbers": [], "gale_level": 0, "reasoning": "Datos insuficientes"}
 
-    # 1. Ponderación de Ventanas (Momentum vs Balance)
     scores = {"RED": 0.0, "BLACK": 0.0, "EVEN": 0.0, "ODD": 0.0, "LOW": 0.0, "HIGH": 0.0}
     trends_by_window = analyze_trends(history_data)
     
@@ -617,25 +596,20 @@ def find_best_outside_bet() -> Dict[str, Any]:
         if weight == 0.0:
             continue
             
-        contrarian = (window_name == "long_term_balance") # Apostar contra la tendencia larga
+        contrarian = (window_name == "long_term_balance")
         
         for bet_type in scores.keys():
             if bet_type not in window_trends: continue
             
             freq = window_trends[bet_type]
             diff = freq - 0.5
-            
-            # Ponderar por la "fuerza" de la señal (Z-score simplificado)
             total_non_zero = int(len(history_data) * (1.0 - window_trends.get("ZERO_RATE", 0.0)))
             if total_non_zero > 0:
                 z = diff * (total_non_zero ** 0.5)
-                
                 if contrarian:
                     z = -z
-                
                 scores[bet_type] += z * weight
 
-    # 2. Análisis de Rachas
     streak_bonuses = {}
     streak_bonuses.update(analyze_streaks(history_data, "color"))
     streak_bonuses.update(analyze_streaks(history_data, "parity"))
@@ -645,8 +619,6 @@ def find_best_outside_bet() -> Dict[str, Any]:
         if bet_type in scores:
             scores[bet_type] += bonus
             
-    # 3. Protección contra Cero
-    # (MEJORA 2b: Eliminado el '0' como "seguro")
     global zero_protection_active
     if history_data and history_data[-1] == 0:
         zero_protection_active = True
@@ -656,14 +628,13 @@ def find_best_outside_bet() -> Dict[str, Any]:
     else:
         zero_protection_active = False
         
-    # Decisión Final
     if not scores:
         return {"bet": "IDLE", "covered_numbers": [], "gale_level": 0, "reasoning": "No se generaron scores."}
 
     best_bet = max(scores, key=scores.get)
     best_score = scores[best_bet]
 
-    if best_score < 0.1: # Umbral de confianza
+    if best_score < 0.1:
         return {"bet": "IDLE", "covered_numbers": [], "gale_level": 0, "reasoning": f"Score bajo ({best_score:.1f})"}
 
     return {
@@ -679,7 +650,7 @@ def find_best_outside_bet() -> Dict[str, Any]:
 # ==============================================================================
 
 def find_best_number_bet() -> Dict[str, Any]:
-    """Lógica de predicción para el modo NEIGHBORS"""
+    """Lógica de predicción para el modo NEIGHBORS (LA FUNCIÓN PESADA)"""
     global same_pair_streak, is_stable
     phase = get_current_phase()
     confidence_mult = get_confidence_multiplier()
@@ -715,13 +686,13 @@ def find_best_number_bet() -> Dict[str, Any]:
             "covered_numbers": [],
             "coverage_count": 0,
             "reasoning": f"PAUSA: Volatilidad alta detectada ({distance_patterns['volatility']:.1f} > {IA_CONFIG_NEIGHBORS['VOLATILITY_THRESHOLD']})",
-            "gale_level": 0
+            "gale_level": 0,
+            "bet": "IDLE" # <-- Asegúrate de que las predicciones nulas tengan 'bet'
         }
 
     counts = Counter(history_window)
     total_spins = len(history_window)
     
-    # --- Advanced Analytics ---
     hot_zones = analyze_hot_zones(history_window)
     breakouts = detect_breakouts(history_window)
     clusters = detect_clusters(history_window)
@@ -742,10 +713,8 @@ def find_best_number_bet() -> Dict[str, Any]:
         hot_zones[n] = analysis_data['hot_zones'].get(n, 1.0)
         breakouts[n] = analysis_data['breakouts'].get(n, 0.0)
 
-    # Pre-calcular sets de vecinos
     neigh_sets = {n: set(get_neighbour_set(n, neighbours)) for n in ROULETTE_ORDER}
     
-    # --- Dynamic Top Numbers (MEJORA v2.5) ---
     def composite_score(n):
         f = dfreq[n] * 12.0
         r = recency[n] * 9.0
@@ -764,7 +733,6 @@ def find_best_number_bet() -> Dict[str, Any]:
     else:
         top_numbers = ROULETTE_ORDER
 
-    # --- Pair Scoring ---
     pair_scores = {}
     for i in top_numbers:
         for j in top_numbers:
@@ -772,19 +740,16 @@ def find_best_number_bet() -> Dict[str, Any]:
             
             set_i = neigh_sets[i]
             set_j = neigh_sets[j]
-            
             overlap = len(set_i & set_j)
             
-            # Penalización fuerte por solapamiento
             if overlap > 0:
                 continue
 
             cov = set_i | set_j
-            C = 18 # len(cov) - siempre 18 si no hay solapamiento y N=4
+            C = 18
             
             coverage_quality = analyze_coverage_quality(list(cov), analysis_data)
             
-            # --- Scoring Components ---
             coverage_score = get_weight("COVERAGE_WEIGHT") * C
             coverage_quality_score = get_weight("COVERAGE_QUALITY_WEIGHT") * coverage_quality['coverage_score'] * 20
             frequency_score = get_weight("FREQUENCY_WEIGHT") * (dfreq[i] + dfreq[j])
@@ -830,9 +795,8 @@ def find_best_number_bet() -> Dict[str, Any]:
         sorted_pairs = sorted(pair_scores.items(), key=lambda item: item[1], reverse=True)
         chosen = sorted_pairs[0][0]
         
-    # --- Fallback / Final Decision ---
     if chosen is None:
-        print("⚠️ FALLBACK: No se encontraron pares sin solapamiento en el Top-N. Buscando en todos los 37 números...")
+        # print("⚠️ FALLBACK: No se encontraron pares sin solapamiento en el Top-N. Buscando en todos los 37 números...")
         fallback_best_pair = None
         fallback_best_score = float('-inf')
         all_numbers = ROULETTE_ORDER
@@ -850,48 +814,47 @@ def find_best_number_bet() -> Dict[str, Any]:
                     
         if fallback_best_pair:
             base_nums = [fallback_best_pair[0], fallback_best_pair[1]]
-            print(f"✅ Fallback exitoso: {base_nums} (encontrado en búsqueda completa)")
+            # print(f"✅ Fallback exitoso: {base_nums} (encontrado en búsqueda completa)")
         else:
-            print("🚨 ERROR CRÍTICO: No se encontró NINGÚN par sin solapamiento. Usando par de emergencia [0, 11].")
+            # print("🚨 ERROR CRÍTICO: No se encontró NINGÚN par sin solapamiento. Usando par de emergencia [0, 11].")
             base_nums = [0, 11]
     else:
         base_nums = [chosen[0], chosen[1]]
 
-    # --- Lógica anti-repetición ---
     current_pair_sorted = tuple(sorted(base_nums))
     if last_pair_used is not None and current_pair_sorted == last_pair_used:
         same_pair_streak += 1
     else:
         same_pair_streak = 0
     
-    # ... (Lógica de cambio estratégico)
     if same_pair_streak >= IA_CONFIG_NEIGHBORS["MAX_CONSEC_SAME_PAIR"]:
         alternatives = []
-        for (p, sc) in pair_scores.items():
-            if set(p) == set(base_nums): continue
-            if len(neigh_sets[p[0]] & neigh_sets[p[1]]) > 0: continue
+        if pair_scores: # Asegurarse de que pair_scores no esté vacío
+            for (p, sc) in pair_scores.items():
+                if set(p) == set(base_nums): continue
+                if len(neigh_sets[p[0]] & neigh_sets[p[1]]) > 0: continue
+                
+                current_cov = neigh_sets[base_nums[0]] | neigh_sets[base_nums[1]]
+                alt_cov = neigh_sets[p[0]] | neigh_sets[p[1]]
+                overlap = len(current_cov & alt_cov)
+                
+                if overlap < 6:
+                    alternatives.append((p, sc, overlap))
             
-            current_cov = neigh_sets[base_nums[0]] | neigh_sets[base_nums[1]]
-            alt_cov = neigh_sets[p[0]] | neigh_sets[p[1]]
-            overlap = len(current_cov & alt_cov)
-            
-            if overlap < 6:
-                alternatives.append((p, sc, overlap))
-        
-        if alternatives:
-            alternatives.sort(key=lambda x: (x[1], -x[2]), reverse=True)
-            base_nums = [alternatives[0][0][0], alternatives[0][0][1]]
-            same_pair_streak = 0
-            print("🔄 CAMBIO ESTRATÉGICO DE PAR")
+            if alternatives:
+                alternatives.sort(key=lambda x: (x[1], -x[2]), reverse=True)
+                base_nums = [alternatives[0][0][0], alternatives[0][0][1]]
+                same_pair_streak = 0
+                # print("🔄 CAMBIO ESTRATÉGICO DE PAR")
 
     covered = neigh_sets[base_nums[0]] | neigh_sets[base_nums[1]]
     C = len(covered)
     p3 = 1.0 - ((1.0 - (C/37.0)) ** 3)
     prediction_confidence = min(p3 * confidence_mult * get_pair_performance_score(tuple(sorted(base_nums))), 0.95)
-
     best_score = pair_scores.get(tuple(sorted(base_nums)), 0)
 
     return {
+        "bet": f"Par {base_nums[0]},{base_nums[1]}", # <-- Añadido 'bet'
         "base_numbers": base_nums,
         "covered_numbers": sorted(list(covered)),
         "coverage_count": C,
@@ -943,11 +906,117 @@ def get_all_stats() -> Dict[str, Any]:
     return all_stats
 
 # ==============================================================================
+# --- ¡NUEVO! FUNCIÓN DE TAREA EN SEGUNDO PLANO ---
+# ==============================================================================
+
+def create_signal_in_background(number: int):
+    """
+    Esta es la función LENTA que se ejecuta en segundo plano (el "ayudante").
+    Calcula la señal y actualiza el estado global.
+    """
+    global game_state, active_bet, latest_data_for_frontend, new_update_event, current_mode, stats
+
+    logger.info(f"[BG Task] Iniciando cálculo de señal para el N°{number} (Modo: {current_mode})...")
+    
+    try:
+        current_phase = get_current_phase() # Necesita recalcular la fase
+        should_generate_signal = (
+            (IA_CONFIG_NEIGHBORS["FORCE_ENTRY"] if current_mode == "neighbors" else IA_CONFIG_OUTSIDE["FORCE_ENTRY"]) 
+            or (current_phase == "OPTIMAL")
+        )
+        
+        if should_generate_signal:
+            prediction = {}
+            if current_mode == "neighbors":
+                prediction = find_best_number_bet()
+            else: # current_mode == "outside"
+                prediction = find_best_outside_bet()
+
+            if prediction and prediction.get("bet") not in ["IDLE", "LEARNING"] and prediction.get("covered_numbers"):
+                active_bet = prediction
+                active_bet["mode"] = current_mode # Sellar el modo de la apuesta
+                game_state = "AWAITING_INITIAL_RESULT"
+                stats[current_mode]["total_signals"] += 1
+                
+                bet_name = prediction['bet'] if current_mode == 'outside' else prediction.get('base_numbers', 'N/A')
+                logger.info(f"🔔 [BG Task] ¡NUEVA SEÑAL GENERADA!: {bet_name}")
+                
+                # --- ¡NOTIFICAR AL FRONTEND! ---
+                # Toca la campana para que el long-polling lo recoja.
+                final_data = {
+                    "action": "NEW_BET", # El frontend reaccionará a esto
+                    "response": {"action": "NEW_BET", "bet_details": active_bet},
+                    "last_number": number,
+                    "history": history[-20:],
+                    "stats": get_all_stats()
+                }
+                latest_data_for_frontend = final_data
+                new_update_event.set()
+                new_update_event.clear()
+            else:
+                reason = prediction.get("reasoning", "Sin señal válida")
+                logger.info(f"[BG Task] Cálculo terminado. {reason}.")
+                game_state = "IDLE" # Vuelve a estar disponible
+        else:
+             logger.info(f"[BG Task] Cálculo omitido (should_generate_signal=False).")
+             game_state = "IDLE" # Vuelve a estar disponible
+
+    except Exception as e:
+        logger.error(f"¡¡¡ERROR CRÍTICO en Background Task!!!: {e}")
+        game_state = "IDLE" # Resetea el estado para no bloquearse
+
+
+# ==============================================================================
 # ENDPOINTS DE FASTAPI
 # ==============================================================================
 
+# --- ¡NUEVO! Endpoint para carga masiva ---
+@app.post("/bulk_add")
+async def bulk_add_numbers(data: BulkNumbersInput):
+    """
+    Recibe una lista de números y los procesa rápidamente
+    sin ejecutar la IA en cada paso, solo al final.
+    """
+    global history, latest_data_for_frontend, new_update_event, game_state
+    
+    # Procesa la mayoría de números sin lógica pesada
+    # Asumimos que la mayoría son de aprendizaje
+    for number in data.numbers:
+        if not (0 <= number <= 36):
+            continue
+        
+        history.append(number)
+        if current_mode == "neighbors":
+            update_number_tracking(number)
+    
+    logger.info(f"Carga Masiva: {len(data.numbers)} números añadidos. Historial total: {len(history)}.")
+    
+    # Ahora, forzamos UNA SOLA actualización de estado al final
+    game_state = "IDLE" # Forza a que la próxima petición /process_number piense
+    
+    final_data = {
+        "action": "BULK_UPDATE",
+        "message": f"{len(data.numbers)} números añadidos.",
+        "last_number": history[-1] if history else None,
+        "history": history[-20:],
+        "stats": get_all_stats()
+    }
+    
+    latest_data_for_frontend = final_data
+    new_update_event.set()
+    new_update_event.clear()
+    
+    return {"status": "success", "message": f"{len(data.numbers)} números añadidos."}
+
+
+# --- ¡MODIFICADO! Endpoint principal para procesar números ---
 @app.post("/process_number")
-async def process_number(data: NumberInput):
+async def process_number(data: NumberInput, tasks: BackgroundTasks):
+    """
+    Procesa un número (el "chef").
+    Responde rápido y delega el trabajo pesado (cálculo de señal)
+    a una Tarea en Segundo Plano (el "ayudante").
+    """
     global game_state, active_bet, history, latest_data_for_frontend, cooldown_rounds, recent_pairs, last_pair_used, same_pair_streak, pair_performance, is_stable, zero_protection_active
     
     number = data.number
@@ -963,15 +1032,14 @@ async def process_number(data: NumberInput):
     current_phase = get_current_phase()
     response: Dict[str, Any] = {"action": "WAIT"}
     
-    bet_active = (game_state not in ["IDLE", "LEARNING", "COOLDOWN"])
+    # --- LÓGICA DE VICTORIA/DERROTA (RÁPIDA) ---
+    bet_active = (game_state not in ["IDLE", "LEARNING", "COOLDOWN", "ANALYZING_BG"])
     
     if bet_active and active_bet:
         bet_mode = active_bet["mode"] # 'neighbors' o 'outside'
         mode_stats = stats[bet_mode]
         
         is_win = number in active_bet["covered_numbers"]
-        
-        # ✅ MEJORA v3.5: Lógica de victoria universal
         
         if is_win:
             mode_stats["total_wins"] += 1
@@ -1012,12 +1080,12 @@ async def process_number(data: NumberInput):
                 last_pair_used = tuple(sorted((bi, bj)))
                 same_pair_streak = 0
 
-            game_state = "IDLE"
+            game_state = "IDLE" # ¡LISTO PARA OTRO PEDIDO!
             active_bet = None
-            cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"]
-            print(f"✅ [{bet_mode.upper()}] VICTORIA! Nro: {number} | Nivel: {win_level} | Racha: {mode_stats['current_win_streak']}")
+            cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"] if bet_mode == "neighbors" else IA_CONFIG_OUTSIDE["COOLDOWN_ROUNDS"]
+            logger.info(f"✅ [{bet_mode.upper()}] VICTORIA! Nro: {number} | Nivel: {win_level} | Racha: {mode_stats['current_win_streak']}")
 
-        else: # No es victoria
+        else: # No es victoria (Gale)
             mode_stats["recent_results"].append(False)
             
             if game_state == "AWAITING_INITIAL_RESULT":
@@ -1035,60 +1103,58 @@ async def process_number(data: NumberInput):
                 if bet_mode == "neighbors" and "base_numbers" in active_bet:
                     bi, bj = active_bet["base_numbers"]
                     pair_key = tuple(sorted((bi, bj)))
-                    if pair_key in pair_performance: # <-- Tuve que añadir esta comprobación
+                    if pair_key in pair_performance:
                         pair_performance[pair_key]['losses'] = pair_performance[pair_key].get('losses', 0) + 1
-                        pair_performance[pair_key]['recent_uses'] = max(pair_performance[pair_key].get('recent_uses', 1), 5) # <-- Esto estaba mal en tu original
+                        pair_performance[pair_key]['uses'] = pair_performance[pair_key].get('uses', 0) + 1
+                        pair_performance[pair_key]['recent_uses'] = min(pair_performance[pair_key].get('recent_uses', 0) + 1, 5)
                         pair_performance[pair_key]['recent_wins'] = 0
                     
                     recent_pairs.append(pair_key)
                     last_pair_used = pair_key
                 
                 response = {"action": "LOSS", "correct_number": number, "bet_details": active_bet}
-                game_state = "IDLE"
+                game_state = "IDLE" # ¡LISTO PARA OTRO PEDIDO!
                 active_bet = None
-                cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"]
-                print(f"❌ [{bet_mode.upper()}] PÉRDIDA. Nro: {number} | Racha reiniciada.")
+                cooldown_rounds = IA_CONFIG_NEIGHBORS["COOLDOWN_ROUNDS"] if bet_mode == "neighbors" else IA_CONFIG_OUTSIDE["COOLDOWN_ROUNDS"]
+                logger.info(f"❌ [{bet_mode.upper()}] PÉRDIDA. Nro: {number} | Racha reiniciada.")
 
+    # --- LÓGICA DE COOLDOWN (RÁPIDA) ---
     elif cooldown_rounds > 0:
         cooldown_rounds -= 1
         response = (
             {"action": "READY", "message": "Cooldown terminado"} if cooldown_rounds == 0
             else {"action": "COOLDOWN", "rounds_left": cooldown_rounds}
         )
+        if cooldown_rounds == 0:
+            game_state = "IDLE" # ¡LISTO!
     
+    # --- ¡LÓGICA DE NUEVA SEÑAL (MODIFICADA!) ---
     elif game_state in ["IDLE", "LEARNING"] and current_phase != "LEARNING":
-        should_generate_signal = (
-            (IA_CONFIG_NEIGHBORS["FORCE_ENTRY"] if current_mode == "neighbors" else IA_CONFIG_OUTSIDE["FORCE_ENTRY"]) 
-            or (current_phase == "OPTIMAL")
-        )
         
-        if should_generate_signal:
-            
-            prediction = {}
-            if current_mode == "neighbors":
-                prediction = find_best_number_bet()
-            else: # current_mode == "outside"
-                prediction = find_best_outside_bet()
-
-            if prediction and prediction["bet"] not in ["IDLE", "LEARNING"] and prediction["covered_numbers"]:
-                active_bet = prediction
-                active_bet["mode"] = current_mode # Sellar el modo de la apuesta
-                game_state = "AWAITING_INITIAL_RESULT"
-                stats[current_mode]["total_signals"] += 1
-                
-                response = {
-                    "action": "NEW_BET",
-                    "bet_details": active_bet
-                }
-                print(f"🔔 [{current_mode.upper()}] NUEVA SEÑAL: {prediction['bet'] if current_mode == 'outside' else prediction['base_numbers']}")
-            else:
-                reason = prediction.get("reasoning", "Sin señal válida")
-                response = {"action": "WAIT", "message": reason}
+        # ¡AQUÍ ESTÁ LA MAGIA!
+        
+        # 1. Cambia el estado para que no se pida otro pastel
+        #    mientras el ayudante está ocupado.
+        game_state = "ANALYZING_BG" # Un nuevo estado: "pensando en 2do plano"
+        
+        # 2. Responde "ESPERA" inmediatamente (esto arregla el Error de Red)
+        response = {"action": "WAIT", "message": "Analizando..."}
+        
+        # 3. Programa la tarea pesada para DESPUÉS de responder.
+        tasks.add_task(create_signal_in_background, number)
+        
+        logger.info(f"Petición {number} recibida. Respondiendo 'WAIT' y enviando cálculo a 2do plano.")
     
-    else: # Fase de aprendizaje
-        response = {"action": "LEARNING", "message": f"{len(history)}/{IA_CONFIG_NEIGHBORS['LEARNING_PHASE_MIN']}"}
+    # --- LÓGICA DE APRENDIZAJE (RÁPIDA) ---
+    else: # Fase de aprendizaje o estado ANALYZING_BG (ya ocupado)
+        msg = f"{len(history)}/{IA_CONFIG_NEIGHBORS['LEARNING_PHASE_MIN']}"
+        if game_state == "ANALYZING_BG":
+            msg = "Analizando señal anterior..."
+        
+        response = {"action": "LEARNING", "message": msg}
 
-    # Empaquetar datos para el frontend
+    # --- Empaquetar datos para el frontend ---
+    # (Envía la respuesta RÁPIDA: WIN, LOSS, GALE, COOLDOWN, o WAIT)
     final_data = {
         "action": response.get("action", "UPDATE"),
         "response": response,
@@ -1121,7 +1187,7 @@ async def set_mode(data: ModeInput):
     cooldown_rounds = 0
     current_mode = data.mode
     
-    print(f"🔄 MODO CAMBIADO A: {current_mode.upper()}")
+    logger.info(f"🔄 MODO CAMBIADO A: {current_mode.upper()}")
     
     response = {
         "action": "MODE_CHANGE",
@@ -1131,7 +1197,6 @@ async def set_mode(data: ModeInput):
         "last_number": history[-1] if history else None
     }
     
-    # Notificar al long-polling
     global latest_data_for_frontend, new_update_event
     latest_data_for_frontend = response
     new_update_event.set()
@@ -1144,6 +1209,7 @@ async def set_mode(data: ModeInput):
 async def listen_for_updates():
     """Endpoint de long-polling para el frontend."""
     try:
+        # Espera a que la "campana" (new_update_event) suene
         await asyncio.wait_for(new_update_event.wait(), timeout=80.0)
         if latest_data_for_frontend is None:
             return {"action": "NO_UPDATE"}
@@ -1162,7 +1228,7 @@ def get_initial_state():
             "stats": get_all_stats()
         }
     except Exception as e:
-        print(f"Error en initial_state: {e}")
+        logger.error(f"Error en initial_state: {e}")
         history.clear()
         reset_all_internal()
         return {
@@ -1178,33 +1244,26 @@ def delete_last_number():
     if not history:
         return {"status": "no history to delete"}
 
-    # 1. Revertir el estado
     game_state = "IDLE"
     active_bet = None
     cooldown_rounds = 0
     
-    # 2. Revertir el historial
     deleted_number = history.pop()
     
-    # 3. Re-calcular 'number_last_seen' (MEJORA v3.7)
-    # Es más simple y seguro recalcularlo que intentar revertirlo.
     if current_mode == 'neighbors':
         temp_history = list(history)
         number_last_seen = {n: 0 for n in ROULETTE_ORDER}
         for i, num in enumerate(reversed(temp_history)):
             if num in number_last_seen and number_last_seen[num] == 0:
-                # Solo asignamos la primera vez que lo vemos (más reciente)
-                # i=0 es el número más reciente, i=1 el segundo, etc.
-                if i > 0: # El 0 ya está asignado
+                if i > 0:
                     number_last_seen[num] = i 
         
-        # Ajuste para los que no se han visto en el historial
         max_seen = len(temp_history)
         for n in ROULETTE_ORDER:
             if n not in temp_history:
-                number_last_seen[n] = max_seen # O un valor grande
+                number_last_seen[n] = max_seen
     
-    print(f"⏪ NÚMERO BORRADO: {deleted_number}. Datos recalculados.")
+    logger.info(f"⏪ NÚMERO BORRADO: {deleted_number}. Datos recalculados.")
 
     response = {
         "action": "DELETE_LAST",
@@ -1214,7 +1273,6 @@ def delete_last_number():
         "last_number": history[-1] if history else None
     }
     
-    # Notificar al long-polling
     global latest_data_for_frontend, new_update_event
     latest_data_for_frontend = response
     new_update_event.set()
@@ -1238,13 +1296,13 @@ def reset_stats_internal():
 def reset_stats():
     """Resetea solo las estadísticas, mantiene el historial."""
     reset_stats_internal()
-    print("🔄 RESET DE ESTADÍSTICAS - El historial se mantiene.")
+    logger.info("🔄 RESET DE ESTADÍSTICAS - El historial se mantiene.")
     return {"status": "success", "stats": get_all_stats()}
 
 
 def reset_all_internal():
     """Función interna para reseteo completo."""
-    global history, game_state, active_bet, cooldown_rounds, number_last_seen, pattern_memory, cluster_cache
+    global history, game_state, active_bet, cooldown_rounds, number_last_seen, pattern_memory, cluster_cache, recent_pairs
     
     history.clear()
     reset_stats_internal()
@@ -1260,7 +1318,7 @@ def reset_all_internal():
 def reset_all():
     """Resetea historial, estadísticas y todo el estado del sistema."""
     reset_all_internal()
-    print("🔄 RESET COMPLETO - Sistema reiniciado a fase de aprendizaje")
+    logger.info("🔄 RESET COMPLETO - Sistema reiniciado a fase de aprendizaje")
     return {"status": "success", "stats": get_all_stats(), "message": "Sistema reiniciado completamente"}
 
 
@@ -1306,7 +1364,6 @@ def get_debug_info():
             "zero_protection": zero_protection_active,
             "config": IA_CONFIG_OUTSIDE
         }
-
 
 # ==============================================================================
 # BLOQUE DE INICIO DEL SERVIDOR (MODIFICADO PARA RAILWAY)
