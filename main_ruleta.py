@@ -1327,10 +1327,17 @@ def get_debug_info():
 
 
 if __name__ == "__main__":
+    # ¡LA MAGIA ESTÁ AQUÍ!
+    # Obtenemos el puerto de Railway, o usamos 8000 si corremos localmente
+    port = int(os.environ.get("PORT", 8000))
+
     print("=" * 70)
     print("🚀 SERVIDOR IA COMBINADO v3.8 (Optimizado para Acertividad)")
     print("=" * 70)
-    print(f"   ✓ ¡NUEVO! Sirviendo HTML en http://127.0.0.1:8000/")
+    
+    # ¡ARREGLADO! Usamos 0.0.0.0 y el puerto dinámico
+    print(f"   ✓ ¡NUEVO! Sirviendo HTML en http://0.0.0.0:{port}/")
+    
     print("=" * 70)
     print("   MEJORAS v3.8:")
     print("     ✅ DIVERSITY_WEIGHT: 0.4 → 4.0 (ahora tiene impacto real)")
@@ -1343,10 +1350,14 @@ if __name__ == "__main__":
     print(f"     ✓ Fase 3 ({IA_CONFIG_NEIGHBORS['READY_PHASE_MIN']}+): ÓPTIMO")
     print("=" * 70)
     print("   MODO 2: OUTSIDE (Apuestas Externas)")
-    print(f"     ✓ Análisis de Rachas y Cortes")
-    print(f"     ✓ Estrategia Momentum pura (sin contradicciones)")
+    print("     ✓ Análisis de Rachas y Cortes")
+    print("     ✓ Estrategia Momentum pura (sin contradicciones)")
     print("=" * 70)
     print("   ✓ Estadísticas GALE separadas por modo.")
-    print(f"   ✓ Cooldown unificado: {IA_CONFIG_NEIGHBORS['COOLDOWN_ROUNDS']} rondas.")
+    print("   ✓ Cooldown unificado: 5 rondas.")
     print("=" * 70)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+
+    # ¡LA LÍNEA MÁS IMPORTANTE!
+    # 1. host="0.0.0.0" (para aceptar conexiones externas)
+    # 2. port=port (para usar el puerto de Railway)
+    uvicorn.run(app, host="0.0.0.0", port=port)
