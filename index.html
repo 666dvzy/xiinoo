@@ -13,854 +13,319 @@
             --neon-orange: #ff4500; --neon-yellow: #ffff00; --dark-bg: #0a0a0f;
             --darker-bg: #050508; --glass-bg: rgba(0, 255, 255, 0.05);
             --glass-border: rgba(0, 255, 255, 0.2); --text-primary: #fff;
-            --text-secondary: #b0b0b0; --shadow-glow: 0 0 15px; --shadow-glow-strong: 0 0 25px;
+            --text-secondary: #b0b0b0; --shadow-glow: 0 0 15px; --shadow-glow-l: 0 0 25px;
+            --font-display: 'Orbitron', sans-serif; --font-body: 'Rajdhani', sans-serif;
+            --num-red: #E74C3C; --num-black: #34495E; --num-green: #2ECC71;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            background-color: var(--dark-bg); 
-            background-image: radial-gradient(circle at 25% 25%, rgba(0, 255, 255, 0.1) 0%, transparent 30%), 
-                              radial-gradient(circle at 75% 75%, rgba(255, 0, 128, 0.1) 0%, transparent 30%); 
-            padding: 20px; 
-            min-height: 100vh; 
-            overflow-x: hidden; 
-            font-family: 'Rajdhani', sans-serif;
-            color: var(--text-primary);
-        }
-        h1, h2, h3 { 
-            font-family: 'Orbitron', sans-serif; 
-            text-shadow: 0 0 10px var(--neon-cyan); 
-            letter-spacing: 1px; 
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--font-body); background-color: var(--dark-bg);
+            color: var(--text-primary); display: flex; justify-content: center;
+            align-items: center; min-height: 100vh; padding: 20px;
+            background-image: linear-gradient(45deg, var(--darker-bg) 25%, transparent 25%),
+                              linear-gradient(-45deg, var(--darker-bg) 25%, transparent 25%),
+                              linear-gradient(45deg, transparent 75%, var(--darker-bg) 75%),
+                              linear-gradient(-45deg, transparent 75%, var(--darker-bg) 75%);
+            background-size: 20px 20px;
         }
 
-        /* --- LAYOUT GRID --- */
-        .grid-container { 
-            display: grid; 
-            grid-template-columns: 3fr 1fr; 
-            grid-template-rows: auto auto 1fr auto auto; 
-            grid-template-areas: 
-                "header header" 
-                "mode-switch mode-switch"
-                "main sidebar" 
-                "history history" 
-                "page-footer page-footer"; 
-            gap: 20px; 
-            max-width: 1400px; 
-            margin: 0 auto; 
-            min-height: calc(100vh - 40px); 
+        /* --- CONTENEDOR PRINCIPAL --- */
+        #app-container {
+            width: 100%; max-width: 600px;
+            background: var(--darker-bg); border: 1px solid var(--glass-border);
+            border-radius: 12px; padding: 24px;
+            box-shadow: var(--shadow-glow) var(--neon-cyan), inset 0 0 40px rgba(0, 255, 255, 0.1);
+            display: flex; flex-direction: column; gap: 20px;
+            animation: fadeIn 1s ease-out;
         }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
-        /* --- PANELES BASE --- */
-        .panel { 
-            background: var(--glass-bg); 
-            border: 1px solid var(--glass-border); 
-            border-radius: 10px; 
-            backdrop-filter: blur(8px); 
-            box-shadow: 0 4px 15px rgba(0, 0, 0, .4); 
-            transition: all .3s ease;
-            will-change: transform, box-shadow;
+        /* --- CAJA DE RECOMENDACIÓN (ESTADO) --- */
+        .reco-box {
+            border: 2px solid; padding: 20px; border-radius: 8px;
+            text-align: center; background: var(--glass-bg);
+            transition: all 0.3s ease;
         }
-        .panel-header { 
-            padding: 15px 20px; 
-            border-bottom: 1px solid var(--glass-border); 
-        }
-        .panel-header h3 { color: var(--neon-cyan); }
-        .panel-body { padding: 20px; }
-
-        /* --- HEADER --- */
-        .header { 
-            grid-area: header; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            padding: 15px 25px; 
-            border-bottom: 2px solid var(--neon-cyan); 
-            box-shadow: var(--shadow-glow) var(--neon-cyan); 
-        }
-        .header h1 { 
-            font-size: 2.2rem; 
-            color: var(--neon-cyan); 
-            animation: titlePulse 3s infinite ease-in-out; 
-            display: flex;
-            align-items: baseline;
-            gap: 10px;
-        }
-        .header .credits { 
-            font-size: 0.8rem; 
-            color: var(--text-secondary); 
-            font-style: italic; 
-            opacity: 0.7; 
-        }
-        .status-bar { 
-            display: flex; 
-            gap: 25px; 
-        }
-        .status-item { 
-            text-align: right; 
-            animation: breathe 4s infinite ease-in-out; 
-        }
-        .status-item span { 
-            display: block; 
-            font-size: .9rem; 
-            color: var(--text-secondary); 
-            text-transform: uppercase; 
-        }
-        .status-item strong { 
-            font-size: 1.4rem; 
-            font-family: 'Orbitron'; 
-        }
-
-        /* --- MODE SWITCHER --- */
-        .mode-switcher-panel {
-            grid-area: mode-switch;
-            padding: 15px 25px;
-        }
-        .mode-switcher {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-        }
-        .mode-btn {
-            flex: 1;
-            max-width: 250px;
-            padding: 15px 25px;
-            font-size: 1.1rem;
-            font-family: 'Orbitron';
-            font-weight: 700;
-            border: 2px solid var(--glass-border);
-            border-radius: 8px;
-            background: var(--darker-bg);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all .3s ease;
+        .reco-box h2 {
+            font-family: var(--font-display); font-weight: 700;
+            font-size: 1.5rem; margin-bottom: 15px; letter-spacing: 1px;
             text-transform: uppercase;
         }
-        .mode-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            border-color: var(--neon-cyan);
+        .reco-content { min-height: 50px; }
+        .reco-content p {
+            font-size: 2.25rem; font-weight: 900; line-height: 1.2;
+            font-family: var(--font-display);
         }
-        .mode-btn.active {
-            background: var(--neon-cyan);
-            color: var(--dark-bg);
-            border-color: var(--neon-cyan);
-            box-shadow: var(--shadow-glow-strong) var(--neon-cyan);
-        }
-        .mode-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .reco-content span { font-size: 0.9rem; font-weight: 400; color: var(--text-secondary); }
 
-        /* --- MAIN DISPLAY --- */
-        .main-display { 
-            grid-area: main; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 400px; 
-            animation: fadeIn .5s ease; 
-            transition: box-shadow 0.3s ease, border-color 0.3s ease; 
-        }
-        .display-content { 
-            display: none;
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center; 
-            width: 100%; 
-            height: 100%; 
-            padding: 30px; 
-        }
-        .display-content.active {
-            display: flex;
-            animation: slideInUp 0.6s ease-out; 
-        }
-        .display-content h2 { 
-            font-size: 2.5rem; 
-            margin-bottom: 20px; 
-        }
-        
-        .display-signal h2 { 
-            color: var(--neon-green); 
-            text-shadow: 0 0 15px var(--neon-green); 
-        }
-        .display-idle h2 { color: var(--text-secondary); }
-        .display-cooldown h2 { color: var(--neon-yellow); }
-        .display-learning h2 { color: var(--neon-orange); }
-        .display-win h2 { color: var(--neon-green); }
-        .display-loss h2 { color: var(--neon-red); }
-        
-        .signal-box { 
-            background: var(--darker-bg); 
-            border-radius: 8px; 
-            padding: 25px; 
-            margin-top: 15px; 
-            border: 1px solid var(--glass-border); 
-            min-width: 350px; 
-            text-align: center; 
-            transition: all 0.3s ease; 
-            animation: subtlePulseBorder 2s infinite alternate; 
-        }
-        .signal-numbers { 
-            font-size: 2rem; 
-            font-family: 'Orbitron'; 
-            font-weight: 700; 
-            margin-bottom: 10px; 
-            color: var(--neon-cyan);
-            text-shadow: 0 0 15px var(--neon-cyan);
-        }
-        .signal-details { 
-            font-size: 1rem; 
-            color: var(--text-secondary); 
-            margin-top: 10px;
-        }
-        .signal-reasoning {
-            font-size: 0.95rem;
-            color: var(--text-secondary);
-            font-style: italic;
-            margin-top: 15px;
-            max-width: 90%;
-        }
+        /* Estados de la caja */
+        .reco-box.idle { border-color: var(--neon-blue); box-shadow: var(--shadow-glow) var(--neon-blue); }
+        .reco-box.idle h2 { color: var(--neon-blue); }
+        .reco-box.idle .reco-content p { color: var(--text-secondary); }
 
-        /* --- SIDEBAR --- */
-        .sidebar { 
-            grid-area: sidebar; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 20px; 
-        }
-        .stats-grid { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 15px; 
-        }
-        .stat-box { 
-            background: var(--darker-bg); 
-            border-radius: 8px; 
-            padding: 15px; 
-            text-align: center; 
-        }
-        .stat-box-full { grid-column: 1/-1; }
-        .stat-box span { 
-            display: block; 
-            font-size: .9rem; 
-            color: var(--text-secondary); 
-            margin-bottom: 5px; 
-        }
-        .stat-box strong { 
-            font-size: 1.8rem; 
-            font-family: 'Orbitron'; 
-            color: var(--neon-cyan);
-        }
+        .reco-box.active-bet { border-color: var(--neon-cyan); box-shadow: var(--shadow-glow) var(--neon-cyan); }
+        .reco-box.active-bet h2 { color: var(--neon-cyan); animation: pulse 1.5s infinite; }
+        .reco-box.active-bet .reco-content p { color: var(--neon-cyan); }
         
-        /* Colores específicos */
-        #wins-display { color: var(--neon-green) !important; }
-        #losses-display { color: var(--neon-red) !important; }
-        #accuracy-display { color: var(--neon-cyan) !important; }
-        #streak-display { color: var(--neon-green) !important; }
-        
-        /* Controles Manuales */
-        .input-panel .panel-body { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 15px; 
+        .reco-box.gale { border-color: var(--neon-orange); box-shadow: var(--shadow-glow) var(--neon-orange); }
+        .reco-box.gale h2 { color: var(--neon-orange); }
+        .reco-box.gale .reco-content p { color: var(--neon-orange); }
+
+        .reco-box.win { border-color: var(--neon-green); box-shadow: var(--shadow-glow) var(--neon-green); }
+        .reco-box.win h2 { color: var(--neon-green); }
+        .reco-box.win .reco-content p { color: var(--neon-green); }
+
+        .reco-box.loss { border-color: var(--neon-red); box-shadow: var(--shadow-glow) var(--neon-red); }
+        .reco-box.loss h2 { color: var(--neon-red); }
+        .reco-box.loss .reco-content p { color: var(--neon-red); }
+
+        @keyframes pulse { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
+
+        /* --- HISTORIAL DE NÚMEROS --- */
+        .history-box {
+            display: flex; flex-wrap: wrap-reverse; justify-content: center;
+            gap: 5px; padding: 10px; background: var(--dark-bg);
+            border-radius: 6px; border: 1px solid var(--glass-border);
+            min-height: 40px;
         }
-        
-        #num-input {
-            background: var(--darker-bg);
-            border: 2px solid var(--glass-border);
-            border-radius: 8px;
-            padding: 15px;
-            font-size: 1.2rem;
-            font-family: 'Orbitron';
-            color: var(--text-primary);
-            text-align: center;
-            transition: all .3s ease;
+        .num {
+            width: 28px; height: 28px; display: inline-flex;
+            justify-content: center; align-items: center;
+            border-radius: 50%; font-weight: 700; font-size: 0.9rem;
+            color: #fff; background-color: var(--num-black);
+            transition: transform 0.3s ease;
         }
-        #num-input:focus {
-            outline: none;
-            border-color: var(--neon-cyan);
+        .num.red { background-color: var(--num-red); }
+        .num.green { background-color: var(--num-green); }
+        .num:first-child {
+            transform: scale(1.15); border: 2px solid var(--neon-cyan);
             box-shadow: var(--shadow-glow) var(--neon-cyan);
         }
-        
-        .btn { 
-            padding: 15px; 
-            font-size: 1.1rem; 
-            font-family: 'Orbitron'; 
-            border-radius: 8px; 
-            border: none; 
-            cursor: pointer; 
-            text-transform: uppercase; 
-            letter-spacing: 1px; 
-            transition: all .3s ease; 
-            font-weight: 600;
+
+        /* --- CONTROLES DE ENTRADA --- */
+        .controls { display: flex; gap: 10px; }
+        .controls input {
+            flex-grow: 1; background: var(--glass-bg); border: 1px solid var(--glass-border);
+            color: var(--text-primary); border-radius: 6px; padding: 0 15px;
+            font-family: var(--font-body); font-size: 1.2rem; font-weight: 700;
+            outline: none; transition: all 0.3s ease;
         }
-        .btn-primary { 
-            background: var(--neon-cyan); 
-            color: var(--dark-bg); 
-            box-shadow: var(--shadow-glow) var(--neon-cyan); 
+        .controls input:focus { border-color: var(--neon-cyan); box-shadow: 0 0 10px var(--neon-cyan); }
+        .controls button {
+            background: var(--neon-cyan); color: var(--darker-bg); border: none;
+            border-radius: 6px; padding: 10px 20px; font-weight: 700; font-size: 1rem;
+            cursor: pointer; transition: all 0.3s ease;
+            font-family: var(--font-display);
         }
-        .btn-primary:hover:not(:disabled) { 
-            box-shadow: var(--shadow-glow-strong) var(--neon-cyan); 
-            filter: brightness(1.2); 
-            transform: translateY(-2px);
+        .controls button:hover { background: #fff; box-shadow: var(--shadow-glow) var(--neon-cyan); }
+
+        /* --- GRID DE ESTADÍSTICAS --- */
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .stat-card {
+            background: var(--dark-bg); border: 1px solid var(--glass-border);
+            border-radius: 6px; padding: 15px;
         }
-        .btn:disabled { 
-            background: #555; 
-            color: #999; 
-            cursor: not-allowed; 
-            box-shadow: none; 
-            opacity: 0.5;
+        .stat-card h3 {
+            font-family: var(--font-display); font-size: 0.9rem;
+            color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase;
+        }
+        .stat-card p {
+            font-size: 1.75rem; font-weight: 700;
+            font-family: var(--font-display); color: var(--text-primary);
+        }
+        .stat-card.phase p { color: var(--neon-purple); }
+        .stat-card.mode p { color: var(--neon-orange); }
+        .stat-card.accuracy-n p { color: var(--neon-cyan); }
+        .stat-card.accuracy-o p { color: var(--neon-pink); }
+
+        /* --- CAMBIADOR DE MODO --- */
+        .mode-switcher { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .mode-switcher button {
+            background: transparent; border: 2px solid var(--glass-border);
+            color: var(--text-secondary); border-radius: 6px; padding: 12px;
+            font-weight: 700; font-size: 1rem; cursor: pointer;
+            transition: all 0.3s ease; font-family: var(--font-display);
+        }
+        .mode-switcher button:hover { border-color: var(--text-primary); color: var(--text-primary); }
+        .mode-switcher button.active {
+            color: var(--darker-bg); background: var(--neon-cyan);
+            border-color: var(--neon-cyan); box-shadow: var(--shadow-glow) var(--neon-cyan);
+        }
+        /* Asigna color al otro botón activo */
+        .mode-switcher button.active-outside {
+            background: var(--neon-pink); border-color: var(--neon-pink);
+            box-shadow: var(--shadow-glow) var(--neon-pink);
         }
 
-        /* --- HISTORY PANEL --- */
-        .history-panel { 
-            grid-area: history; 
-            min-height: 100px; 
+        /* --- NOTIFICACIÓN TOAST --- */
+        #toast {
+            position: fixed; top: 20px; right: 20px; background-color: var(--neon-cyan);
+            color: var(--darker-bg); padding: 15px 25px; border-radius: 6px;
+            font-family: var(--font-display); font-weight: 700;
+            box-shadow: var(--shadow-glow-l) var(--neon-cyan);
+            transform: translateX(120%); transition: transform 0.5s ease;
+            z-index: 1000;
         }
-        .history-container { 
-            display: flex; 
-            overflow-x: auto; 
-            overflow-y: hidden; 
-            gap: 10px; 
-            padding: 10px 0; 
-            white-space: nowrap;
-            scroll-behavior: smooth;
-        }
-        .history-container::-webkit-scrollbar {
-            height: 8px;
-        }
-        .history-container::-webkit-scrollbar-track {
-            background: var(--darker-bg);
-            border-radius: 4px;
-        }
-        .history-container::-webkit-scrollbar-thumb {
-            background: var(--glass-border);
-            border-radius: 4px;
-        }
-        .history-container::-webkit-scrollbar-thumb:hover {
-            background: var(--neon-cyan);
-        }
-        .history-number { 
-            width: 45px; 
-            height: 45px; 
-            border-radius: 50%; 
-            display: inline-flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 1.2rem; 
-            font-weight: 700; 
-            flex-shrink: 0; 
-            color: #fff; 
-            border: 2px solid rgba(0,0,0,.4); 
-            animation: popIn .4s ease-out;
-            font-family: 'Orbitron';
-        }
-        .num-red { 
-            background: var(--neon-red); 
-            border-color: #ff4f4f;
-            box-shadow: 0 0 10px rgba(255, 31, 31, 0.5);
-        } 
-        .num-black { 
-            background: #2a2a2a; 
-            border-color: #4a4a4a; 
-        } 
-        .num-zero { 
-            background: var(--neon-green); 
-            border-color: #4fff81;
-            box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
-        }
+        #toast.show { transform: translateX(0); }
+        #toast.error { background-color: var(--neon-red); box-shadow: var(--shadow-glow-l) var(--neon-red); }
 
-        /* --- FOOTER --- */
-        .page-footer { 
-            grid-area: page-footer; 
-            text-align: center; 
-            font-size: 0.9rem; 
-            color: var(--text-secondary); 
-            opacity: 0.6; 
-            padding-top: 15px; 
-            margin-top: 15px; 
-            border-top: 1px dashed var(--glass-border); 
-            animation: fadeIn 2s ease-in; 
-        }
-
-        /* --- TOAST --- */
-        #toast { 
-            position: fixed; 
-            bottom: 20px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: var(--neon-green); 
-            color: var(--dark-bg); 
-            padding: 12px 25px; 
-            border-radius: 5px; 
-            font-family: 'Orbitron'; 
-            font-size: 1rem; 
-            box-shadow: var(--shadow-glow-strong) var(--neon-green); 
-            visibility: hidden; 
-            opacity: 0; 
-            transition: all .4s ease; 
-            z-index: 1000; 
-        }
-        #toast.show { 
-            visibility: visible; 
-            opacity: 1; 
-            bottom: 40px; 
-        }
-        #toast.error { 
-            background: var(--neon-red); 
-            box-shadow: var(--shadow-glow-strong) var(--neon-red); 
-            color: var(--text-primary); 
-        }
-
-        /* --- ANIMACIONES --- */
-        @keyframes fadeIn { 
-            from { opacity: 0; } 
-            to { opacity: 1; } 
-        }
-        @keyframes popIn { 
-            0% { transform: scale(0.5); opacity: 0; } 
-            100% { transform: scale(1); opacity: 1; } 
-        }
-        @keyframes slideInUp { 
-            0% { transform: translateY(20px); opacity: 0; } 
-            100% { transform: translateY(0); opacity: 1; } 
-        }
-        @keyframes titlePulse { 
-            0%, 100% { text-shadow: 0 0 10px var(--neon-cyan); opacity: 0.9; } 
-            50% { text-shadow: 0 0 25px var(--neon-cyan), 0 0 5px #fff; opacity: 1; } 
-        }
-        @keyframes breathe { 
-            0%, 100% { opacity: 0.8; transform: scale(1); } 
-            50% { opacity: 1; transform: scale(1.02); } 
-        }
-        @keyframes subtlePulseBorder { 
-            0%, 100% { 
-                border-color: var(--glass-border); 
-                box-shadow: 0 0 5px rgba(0,0,0,0.2); 
-            } 
-            50% { 
-                border-color: var(--neon-cyan); 
-                box-shadow: 0 0 10px var(--neon-cyan), 0 0 5px rgba(0,0,0,0.3); 
-            } 
-        }
-        @keyframes green-flash { 
-            0% { 
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 255, 65, 0.5); 
-                border-color: var(--glass-border); 
-            } 
-            50% { 
-                box-shadow: 0 6px 25px rgba(0, 0, 0, 0.5), 0 0 40px var(--neon-green), inset 0 0 20px rgba(0, 255, 65, 0.3); 
-                border-color: var(--neon-green); 
-                transform: scale(1.01); 
-            } 
-            100% { 
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 255, 65, 0.5); 
-                border-color: var(--glass-border); 
-            } 
-        }
-        .win-flash { 
-            animation: green-flash 0.8s ease-out; 
-        }
-
-        /* --- RESPONSIVE --- */
-        @media (max-width: 1024px) {
-            .grid-container {
-                grid-template-columns: 1fr;
-                grid-template-areas: 
-                    "header"
-                    "mode-switch"
-                    "main"
-                    "sidebar"
-                    "history"
-                    "page-footer";
-            }
-            .header h1 {
-                font-size: 1.8rem;
-            }
-            .status-bar {
-                gap: 15px;
-            }
-        }
-
-        @media (max-width: 640px) {
-            body {
-                padding: 10px;
-            }
-            .header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-            .header h1 {
-                font-size: 1.5rem;
-            }
-            .status-bar {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
-            .mode-switcher {
-                flex-direction: column;
-            }
-        }
     </style>
 </head>
 <body>
 
-    <div class="grid-container">
-
-        <header class="panel header">
-            <h1>
-                🎰 ROULETTE AI <span style="color: var(--neon-cyan);">GALE</span>
-                <span class="credits">by xiino</span>
-            </h1>
-            <div class="status-bar">
-                <div class="status-item">
-                    <span>Modo</span>
-                    <strong id="current-mode">---</strong>
-                </div>
-                <div class="status-item">
-                    <span>Estado</span>
-                    <strong id="game-state">---</strong>
-                </div>
-                <div class="status-item">
-                    <span>Datos</span>
-                    <strong id="data-count">0</strong>
-                </div>
-            </div>
-        </header>
-
-        <div class="panel mode-switcher-panel">
-            <div class="mode-switcher">
-                <button id="btn-neighbors" class="mode-btn active">🎯 Modo Neighbors</button>
-                <button id="btn-outside" class="mode-btn">📊 Modo Outside</button>
+    <div id="app-container">
+        
+        <div class="reco-box idle" id="reco-box">
+            <h2 id="game-state">CARGANDO...</h2>
+            <div class="reco-content" id="reco-content">
+                <p>Inicializando...</p>
+                <span>Conectando al servidor...</span>
             </div>
         </div>
 
-        <main class="panel main-display" id="displayPanel">
-            <div class="display-content display-signal" id="display-signal">
-                <h2>🎯 ENTRAR AHORA</h2>
-                <div class="signal-box">
-                    <div class="signal-numbers" id="signal-numbers">17, 34, 6</div>
-                    <div class="signal-details" id="signal-details">Cobertura: 9 números</div>
-                    <div class="signal-reasoning" id="signal-reasoning">Patrón detectado...</div>
-                </div>
-            </div>
-            
-            <div class="display-content display-idle" id="display-idle">
-                <h2>⏳ ESPERANDO SEÑAL...</h2>
-                <p>Calculando próxima entrada.</p>
-            </div>
-            
-            <div class="display-content display-cooldown" id="display-cooldown">
-                <h2>⏸️ COOLDOWN</h2>
-                <p>Esperando <strong id="cooldown-rounds" style="font-size: 2rem; font-family: 'Orbitron'; color: var(--neon-yellow);">2</strong> rondas...</p>
-            </div>
-            
-            <div class="display-content display-learning active" id="display-learning">
-                <h2>⚡ RECOLECTANDO DATOS...</h2>
-                <p>El sistema está aprendiendo patrones.</p>
+        <div class="history-box" id="history-box">
             </div>
 
-            <div class="display-content display-win" id="display-win">
-                <h2>🎉 ¡VICTORIA!</h2>
-                <div class="signal-box">
-                    <div class="signal-numbers" id="win-number">17</div>
-                    <div class="signal-details" id="win-level">Victoria en G0</div>
-                </div>
-            </div>
-
-            <div class="display-content display-loss" id="display-loss">
-                <h2>💥 PÉRDIDA</h2>
-                <div class="signal-box">
-                    <div class="signal-numbers" id="loss-number">8</div>
-                    <div class="signal-details">Ciclo terminado. Iniciando cooldown...</div>
-                </div>
-            </div>
-        </main>
-
-        <aside class="sidebar">
-            <div class="panel stats-panel">
-                <div class="panel-header"><h3>📊 ESTADÍSTICAS</h3></div>
-                <div class="panel-body">
-                    <div class="stats-grid">
-                        <div class="stat-box">
-                            <span>Victorias</span>
-                            <strong id="wins-display">0</strong>
-                        </div>
-                        <div class="stat-box">
-                            <span>Pérdidas</span>
-                            <strong id="losses-display">0</strong>
-                        </div>
-                        <div class="stat-box stat-box-full">
-                            <span>Precisión</span>
-                            <strong id="accuracy-display">0.0%</strong>
-                        </div>
-                        <div class="stat-box">
-                            <span>Wins G0</span>
-                            <strong id="wins-g0-display">0</strong>
-                        </div>
-                        <div class="stat-box">
-                            <span>Wins G1</span>
-                            <strong id="wins-g1-display">0</strong>
-                        </div>
-                        <div class="stat-box">
-                            <span>Wins G2</span>
-                            <strong id="wins-g2-display">0</strong>
-                        </div>
-                        <div class="stat-box">
-                            <span>Señales</span>
-                            <strong id="total-signals-display">0</strong>
-                        </div>
-                        <div class="stat-box stat-box-full">
-                            <span>Racha Victorias</span>
-                            <strong id="streak-display">0</strong>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="panel input-panel">
-                <div class="panel-header"><h3>✋ ENTRADA MANUAL</h3></div>
-                <div class="panel-body">
-                    <p style="text-align: center; color: var(--text-secondary); margin-bottom: 10px;">Añadir último número:</p>
-                    <input type="number" id="num-input" placeholder="0-36" min="0" max="36">
-                    <button id="add-btn" class="btn btn-primary">🎲 ENVIAR NÚMERO</button>
-                </div>
-            </div>
-        </aside>
-
-        <footer class="panel history-panel">
-            <div class="panel-header"><h3>📜 HISTORIAL RECIENTE</h3></div>
-            <div class="panel-body">
-                <div class="history-container" id="history-container"></div>
-            </div>
-        </footer>
-
-        <div class="page-footer">
-            The World Is Mine
+        <div class="controls">
+            <input type="number" id="num-input" placeholder="N° Manual...">
+            <button id="btn-submit">Enviar</button>
         </div>
 
+        <div class="stats-grid">
+            <div class="stat-card phase">
+                <h3>Fase</h3>
+                <p id="stat-phase">--</p>
+            </div>
+            <div class="stat-card mode">
+                <h3>Datos</h3>
+                <p id="stat-data-count">--</p>
+            </div>
+            <div class="stat-card accuracy-n">
+                <h3>Acc (Vecinos)</h3>
+                <p id="stat-acc-n">--%</p>
+            </div>
+            <div class="stat-card accuracy-o">
+                <h3>Acc (Externas)</h3>
+                <p id="stat-acc-o">--%</p>
+            </div>
+        </div>
+
+        <div class="mode-switcher">
+            <button id="btn-neighbors" class="active">Vecinos</button>
+            <button id="btn-outside">Externas</button>
+        </div>
     </div>
 
-    <div id="toast" role="alert" aria-live="polite">Mensaje</div>
+    <div id="toast">Mensaje</div>
 
     <script>
-        const API_URL = window.location.origin; // Se adapta automáticamente
-        const ROULETTE_RED = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
-
-        // --- ELEMENTOS DOM ---
+        // --- ¡MODIFICADO! Esta es la URL de tu API en Railway ---
+        const API_URL = 'https://xiinoo-production.up.railway.app'; // URL de Railway
+        
+        // --- ELEMENTOS DEL DOM ---
         const elements = {
+            recoBox: document.getElementById('reco-box'),
+            gameState: document.getElementById('game-state'),
+            recoContent: document.getElementById('reco-content'),
+            historyBox: document.getElementById('history-box'),
             numInput: document.getElementById('num-input'),
-            btnSubmit: document.getElementById('add-btn'),
+            btnSubmit: document.getElementById('btn-submit'),
+            statPhase: document.getElementById('stat-phase'),
+            statDataCount: document.getElementById('stat-data-count'),
+            statAccN: document.getElementById('stat-acc-n'),
+            statAccO: document.getElementById('stat-acc-o'),
             btnNeighbors: document.getElementById('btn-neighbors'),
             btnOutside: document.getElementById('btn-outside'),
-            
-            historyContainer: document.getElementById('history-container'),
-            displayPanel: document.getElementById('displayPanel'),
-            displaySignal: document.getElementById('display-signal'),
-            displayIdle: document.getElementById('display-idle'),
-            displayCooldown: document.getElementById('display-cooldown'),
-            displayLearning: document.getElementById('display-learning'),
-            displayWin: document.getElementById('display-win'),
-            displayLoss: document.getElementById('display-loss'),
-            
-            signalNumbers: document.getElementById('signal-numbers'),
-            signalDetails: document.getElementById('signal-details'),
-            signalReasoning: document.getElementById('signal-reasoning'),
-            
-            winNumber: document.getElementById('win-number'),
-            winLevel: document.getElementById('win-level'),
-            lossNumber: document.getElementById('loss-number'),
-            
-            cooldownRounds: document.getElementById('cooldown-rounds'),
-            
-            currentMode: document.getElementById('current-mode'),
-            gameState: document.getElementById('game-state'),
-            dataCount: document.getElementById('data-count'),
-            
-            winsDisplay: document.getElementById('wins-display'),
-            lossesDisplay: document.getElementById('losses-display'),
-            accuracyDisplay: document.getElementById('accuracy-display'),
-            streakDisplay: document.getElementById('streak-display'),
-            winsG0Display: document.getElementById('wins-g0-display'),
-            winsG1Display: document.getElementById('wins-g1-display'),
-            winsG2Display: document.getElementById('wins-g2-display'),
-            totalSignalsDisplay: document.getElementById('total-signals-display'),
-            
             toast: document.getElementById('toast')
         };
-
-        // --- ESTADO ---
+        
+        // --- UTILIDADES (Toast) ---
         let toastTimeoutId = null;
-        let previousAction = null;
-
-        // --- UTILIDADES ---
-        function showToast(message, isError = false, duration = 2000) {
+        function showToast(message, isError = false, duration = 3000) {
+            if (toastTimeoutId) clearTimeout(toastTimeoutId);
             elements.toast.textContent = message;
-            elements.toast.className = 'show' + (isError ? ' error' : '');
-            
-            clearTimeout(toastTimeoutId);
+            elements.toast.className = isError ? 'error' : '';
+            elements.toast.classList.add('show');
             toastTimeoutId = setTimeout(() => {
-                elements.toast.className = '';
+                elements.toast.classList.remove('show');
             }, duration);
         }
 
-        function getNumberColorClass(num) {
-            if (num === 0) return 'num-zero';
-            if (ROULETTE_RED.includes(num)) return 'num-red';
-            return 'num-black';
+        // --- LÓGICA DE UI (Actualizar Vistas) ---
+        const ROULETTE_ORDER = [
+            0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8,
+            23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12,
+            35, 3, 26
+        ];
+        const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+
+        function getNumColor(num) {
+            if (num === 0) return 'green';
+            return RED_NUMBERS.includes(num) ? 'red' : 'black';
         }
 
-        function switchDisplay(targetDisplay) {
-            Object.values(elements).forEach(el => {
-                if (el && el.classList && el.classList.contains('display-content')) {
-                    el.classList.remove('active');
-                }
-            });
+        function updateHistory(history = [], lastNumber = null) {
+            elements.historyBox.innerHTML = '';
+            // Tomamos los últimos 20 para mostrar
+            const recentHistory = history.slice(-20).reverse();
             
-            if (targetDisplay && targetDisplay.classList) {
-                targetDisplay.classList.add('active');
-            }
-        }
-
-        // --- RENDERIZADO ---
-        function updateHistory(history = []) {
-            const fragment = document.createDocumentFragment();
-            const displayHistory = history.slice(-50);
-            
-            displayHistory.forEach(num => {
+            recentHistory.forEach((num, index) => {
                 const numEl = document.createElement('div');
-                numEl.className = `history-number ${getNumberColorClass(num)}`;
+                numEl.className = `num ${getNumColor(num)}`;
                 numEl.textContent = num;
-                fragment.appendChild(numEl);
-            });
-            
-            elements.historyContainer.innerHTML = '';
-            elements.historyContainer.appendChild(fragment);
-            
-            requestAnimationFrame(() => {
-                elements.historyContainer.scrollLeft = elements.historyContainer.scrollWidth;
+                // El primer número (el más reciente) recibe el destaque
+                if (index === 0) {
+                    numEl.style.transform = 'scale(1.15)';
+                    numEl.style.border = '2px solid var(--neon-cyan)';
+                    numEl.style.boxShadow = 'var(--shadow-glow) var(--neon-cyan)';
+                }
+                elements.historyBox.appendChild(numEl);
             });
         }
 
-        function updateStats(stats) {
-            if (!stats) return;
-
-            const currentMode = stats.global?.current_mode || 'neighbors';
-            const modeStats = currentMode === 'neighbors' ? stats.neighbors : stats.outside;
+        function updateStats(statsData) {
+            if (!statsData) return;
+            const { global, neighbors, outside } = statsData;
             
-            if (modeStats) {
-                elements.winsDisplay.textContent = modeStats.wins;
-                elements.lossesDisplay.textContent = modeStats.losses;
-                elements.accuracyDisplay.textContent = modeStats.accuracy_percentage + '%';
-                elements.streakDisplay.textContent = modeStats.current_win_streak;
-                elements.winsG0Display.textContent = modeStats.wins_initial;
-                elements.winsG1Display.textContent = modeStats.wins_g1;
-                elements.winsG2Display.textContent = modeStats.wins_g2;
-                elements.totalSignalsDisplay.textContent = modeStats.total_signals;
-            }
-            
-            if (stats.global) {
-                const g = stats.global;
-                elements.currentMode.textContent = g.current_mode.toUpperCase();
-                elements.gameState.textContent = g.game_state;
-                elements.dataCount.textContent = g.data_count;
+            if (global) {
+                elements.statPhase.textContent = global.phase || '--';
+                elements.statDataCount.textContent = global.data_count || '0';
                 
-                elements.btnNeighbors.classList.toggle('active', g.current_mode === 'neighbors');
-                elements.btnOutside.classList.toggle('active', g.current_mode === 'outside');
+                // Actualizar botones de modo
+                if (global.current_mode === 'neighbors') {
+                    elements.btnNeighbors.classList.add('active');
+                    elements.btnOutside.classList.remove('active', 'active-outside');
+                } else {
+                    elements.btnNeighbors.classList.remove('active');
+                    elements.btnOutside.classList.add('active', 'active-outside');
+                }
+            }
+            if (neighbors) {
+                elements.statAccN.textContent = `${neighbors.accuracy_percentage || 0}%`;
+            }
+            if (outside) {
+                elements.statAccO.textContent = `${outside.accuracy_percentage || 0}%`;
             }
         }
-
-        function updateSignal(data) {
-            const action = data.action;
-            const details = data.bet_details || {};
-            const reasoning = data.reasoning || data.message || '';
-            const mode = data.stats?.global?.current_mode || 'neighbors';
-            
-            // Detectar victoria y aplicar animación
-            if (action === 'WIN' && previousAction !== 'WIN') {
-                elements.displayPanel.classList.add('win-flash');
-                setTimeout(() => {
-                    elements.displayPanel.classList.remove('win-flash');
-                }, 800);
-            }
-            
-            previousAction = action;
-            
-            switch(action) {
-                case 'INITIAL':
-                case 'G1':
-                case 'G2':
-                    if (mode === 'neighbors') {
-                        const baseNums = details.base_numbers?.join(', ') || '---';
-                        elements.signalNumbers.textContent = baseNums;
-                        elements.signalDetails.textContent = `Cobertura: ${details.coverage_count || 0} números`;
-                    } else {
-                        elements.signalNumbers.textContent = details.bet_type || '---';
-                        elements.signalDetails.textContent = `Score: ${details.score?.toFixed(2) || '0.00'}`;
-                    }
-                    elements.signalReasoning.textContent = reasoning;
-                    switchDisplay(elements.displaySignal);
-                    
-                    // Actualizar título según gale
-                    const galeText = action === 'INITIAL' ? 'ENTRAR AHORA' : `MANTENER GALE ${action}`;
-                    elements.displaySignal.querySelector('h2').textContent = `🎯 ${galeText}`;
-                    break;
-                    
-                case 'WIN':
-                    elements.winNumber.textContent = data.correct_number || '?';
-                    elements.winLevel.textContent = `Victoria en ${data.win_level || 'G0'}`;
-                    switchDisplay(elements.displayWin);
-                    break;
-                    
-                case 'LOSS':
-                    elements.lossNumber.textContent = data.correct_number || '?';
-                    switchDisplay(elements.displayLoss);
-                    break;
-                    
-                case 'COOLDOWN':
-                    elements.cooldownRounds.textContent = data.rounds_left || '2';
-                    switchDisplay(elements.displayCooldown);
-                    break;
-                    
-                case 'LEARNING':
-                case 'WAIT_DATA_OUTSIDE':
-                case 'WAIT_STABILITY':
-                    elements.displayLearning.querySelector('p').textContent = data.message || 'El sistema está aprendiendo patrones.';
-                    switchDisplay(elements.displayLearning);
-                    break;
-                    
-                case 'IDLE':
-                case 'READY':
-                case 'MODE_CHANGE':
-                case 'NO_UPDATE':
-                default:
-                    switchDisplay(elements.displayIdle);
-                    break;
-            }
-        }
-
+        
         function updateUI(data) {
-            if (!data) return;
-            
-            if (data.history) {
-                updateHistory(data.history);
-            }
-            if (data.stats) {
-                updateStats(data.stats);
-            }
-            if (data.action) {
-                updateSignal(data);
-            }
+            // Esta función es un wrapper, la lógica principal está en processData
+            processData(data);
         }
 
-        // --- API CALLS ---
+        // --- LÓGICA DE COMUNICACIÓN (API) ---
+
         async function processNumber() {
-            const number = parseInt(elements.numInput.value);
+            const numStr = elements.numInput.value;
+            if (numStr === '') return;
+            
+            const number = parseInt(numStr, 10);
             if (isNaN(number) || number < 0 || number > 36) {
-                showToast("Número inválido (0-36)", true);
+                showToast('Número inválido (0-36)', true);
                 return;
             }
             
+            elements.numInput.value = '';
             elements.btnSubmit.disabled = true;
             
             try {
@@ -870,79 +335,168 @@
                     body: JSON.stringify({ number: number })
                 });
                 
-                if (!response.ok) throw new Error('Error en la respuesta del servidor');
+                if (!response.ok) {
+                    // El error de "timeout" (504) se captura aquí
+                    if (response.status === 504) {
+                        showToast('El servidor está pensando (Timeout)... Reintentando.', true);
+                    } else {
+                        throw new Error(`Error ${response.status}`);
+                    }
+                }
                 
-                showToast(`Número ${number} añadido`, false, 1500);
-                elements.numInput.value = '';
-                
+                const data = await response.json();
+                // processData se llamará desde el long-polling, 
+                // pero lo llamamos aquí para una respuesta instantánea
+                // (como "Analizando...")
+                processData(data); 
+
             } catch (error) {
                 console.error("Error al procesar número:", error);
-                showToast('Error de red', true, 4000);
+                showToast('Error de Red al enviar. Revisa la consola.', true);
             } finally {
-                setTimeout(() => {
-                    elements.btnSubmit.disabled = false;
-                }, 300);
+                elements.btnSubmit.disabled = false;
             }
         }
 
         async function setMode(mode) {
-            if (elements.btnNeighbors.disabled) return;
-            
-            elements.btnNeighbors.disabled = true;
-            elements.btnOutside.disabled = true;
-            
             try {
                 const response = await fetch(`${API_URL}/set_mode`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mode: mode })
                 });
-                
-                if (!response.ok) throw new Error('Error al cambiar de modo');
+                if (!response.ok) throw new Error('No se pudo cambiar el modo');
                 
                 const data = await response.json();
-                if(data.stats) {
-                    updateStats(data.stats);
-                    updateSignal({ action: "MODE_CHANGE", stats: data.stats });
-                }
-                
-                showToast(`Modo ${mode.toUpperCase()} activado`, false, 1500);
+                updateStats(data.stats);
+                showToast(`Modo cambiado a ${mode}`, false);
                 
             } catch (error) {
-                console.error("Error al cambiar de modo:", error);
-                showToast('Error al cambiar modo', true, 3000);
-            } finally {
-                setTimeout(() => {
-                    elements.btnNeighbors.disabled = false;
-                    elements.btnOutside.disabled = false;
-                }, 500);
+                console.error("Error al cambiar modo:", error);
+                showToast('Error al cambiar modo', true);
             }
         }
 
+        // --- ¡¡¡FUNCIÓN CLAVE MODIFICADA!!! ---
+        // Esta función lee la respuesta "plana" del backend y actualiza la UI.
+        // Arregla el bug de "Victoria ? G0".
+        function processData(data) {
+            // 1. Actualiza siempre el historial y las estadísticas
+            if (data.history) {
+                updateHistory(data.history, data.last_number);
+            }
+            if (data.stats) {
+                updateStats(data.stats);
+            }
+        
+            // 2. Extrae la información de la acción (si la hay)
+            const action = data.action;
+            // 'bet_details' puede no existir en un 'WAIT', por eso 'data.response'
+            const responseData = data.response || data; 
+            const betDetails = responseData.bet_details;
+            const message = responseData.message;
+            const winLevel = responseData.win_level;
+            
+            // Construye el nombre de la apuesta de forma segura
+            let betName = '?';
+            if (betDetails) {
+                betName = betDetails.bet || (betDetails.base_numbers ? `Par ${betDetails.base_numbers.join(',')}` : '?');
+            }
+        
+            // 3. Actúa según la acción
+            switch (action) {
+                case 'NEW_BET':
+                    elements.gameState.textContent = "¡NUEVA ENTRADA!";
+                    elements.recoContent.innerHTML = `
+                        <p>${betName}</p>
+                        <span>Números: ${betDetails.covered_numbers.join(', ')}</span>
+                    `;
+                    elements.recoBox.className = 'reco-box active-bet';
+                    showToast(`🔔 ¡Nueva Señal! ${betName}`, false, 4000);
+                    break;
+                
+                case 'WIN':
+                    elements.gameState.textContent = "¡VICTORIA!";
+                    elements.recoContent.innerHTML = `<p>${betName}</p><span>Victoria en G${winLevel.replace('INITIAL', '0')}</span>`;
+                    elements.recoBox.className = 'reco-box win';
+                    showToast(`🎉 ¡VICTORIA! ${betName} (G${winLevel.replace('INITIAL', '0')})`, false, 4000);
+                    break;
+        
+                case 'LOSS':
+                    elements.gameState.textContent = "PERDIDA";
+                    elements.recoContent.innerHTML = `<p>${betName}</p><span>Perdida. En Cooldown...</span>`;
+                    elements.recoBox.className = 'reco-box loss';
+                    showToast(`❌ Pérdida. (G2)`, true, 4000);
+                    break;
+        
+                case 'G1':
+                case 'G2':
+                    elements.gameState.textContent = `APUESTA EN G${action === 'G1' ? 1 : 2}`;
+                    elements.recoContent.innerHTML = `<p>${betName}</p><span>Esperando resultado G${action === 'G1' ? 1 : 2}...</span>`;
+                    elements.recoBox.className = 'reco-box active-bet gale';
+                    showToast(`Martingala ${action} activada...`, false, 3000);
+                    break;
+        
+                case 'COOLDOWN':
+                    elements.gameState.textContent = "⏸️ COOLDOWN";
+                    elements.recoContent.innerHTML = `<p>Esperando ${responseData.rounds_left} rondas...</p>`;
+                    elements.recoBox.className = 'reco-box idle';
+                    break;
+        
+                case 'WAIT': // Respuesta rápida de 'process_number'
+                    elements.gameState.textContent = "🧠 ANALIZANDO...";
+                    elements.recoContent.innerHTML = `<p>${message || 'Calculando señal...'}</p>`;
+                    elements.recoBox.className = 'reco-box idle';
+                    break;
+        
+                case 'LEARNING':
+                case 'BULK_UPDATE':
+                case 'READY':
+                case 'IDLE':
+                case 'NO_UPDATE':
+                default:
+                    // No hacer nada si es un 'NO_UPDATE' o un estado de espera
+                    if (action !== 'NO_UPDATE') {
+                        // Solo actualiza si no hay una apuesta activa
+                        const currentState = elements.gameState.textContent;
+                        if (!currentState.includes('VICTORIA') && !currentState.includes('ENTRADA') && !currentState.includes('APUESTA')) {
+                            elements.gameState.textContent = "ESPERANDO SEÑAL";
+                            elements.recoContent.innerHTML = `<p>${message || 'Monitorizando...'}</p>`;
+                            elements.recoBox.className = 'reco-box idle';
+                        }
+                    }
+                    break;
+            }
+        }
+
+
+        // --- LONG POLLING ---
         async function startLongPolling() {
-            while(true) {
+            let errorCount = 0;
+            while (true) {
                 try {
                     const response = await fetch(`${API_URL}/listen_for_updates`);
-                    
-                    if (response.status === 502) {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        continue;
-                    }
-                    
                     if (!response.ok) {
-                        throw new Error(`Respuesta de red no fue ok: ${response.statusText}`);
+                        throw new Error(`Error ${response.status}`);
                     }
-                    
                     const data = await response.json();
                     
-                    if (data && data.action !== "NO_UPDATE") {
-                        console.log("Actualización recibida:", data);
-                        updateUI(data);
+                    // Aquí es donde la "Tarea en Segundo Plano" notifica a la UI
+                    if (data.action !== 'NO_UPDATE') {
+                        console.log('Long Poll Recibido:', data);
+                        processData(data); // Procesa la actualización
                     }
-                } catch (e) {
-                    console.error("Error en long-polling:", e);
-                    elements.gameState.textContent = "ERROR";
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    errorCount = 0; // Reset error count on success
+                    
+                } catch (error) {
+                    console.error("Error en Long Polling:", error);
+                    errorCount++;
+                    if (errorCount > 3) {
+                        showToast('Error de conexión. Reintentando en 10s.', true);
+                        await new Promise(resolve => setTimeout(resolve, 10000));
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                    }
                 }
             }
         }
@@ -953,7 +507,10 @@
                 if (!response.ok) throw new Error('No se pudo cargar el estado inicial');
                 
                 const data = await response.json();
-                updateUI(data);
+                // updateUI(data); // 'updateUI' fue mi error, 'data' no tiene 'action'
+                // Corrección: Llamar a las funciones específicas
+                updateHistory(data.history || [], data.history ? data.history[data.history.length-1] : null);
+                updateStats(data.stats || {});
                 
             } catch (error) {
                 console.error("Error al cargar estado inicial:", error);
